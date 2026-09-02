@@ -66,6 +66,13 @@ final class EventStore {
         Array(readAll().suffix(limit).reversed())
     }
 
+    /// Every stored session, newest first - unlike `recent(limit:)`, not capped. Used
+    /// for export, where the point is to include everything (already bounded in
+    /// practice by the 30-day retention window, not by an arbitrary display limit).
+    func all() -> [AwaySession] {
+        Array(readAll().reversed())
+    }
+
     private func readAll() -> [AwaySession] {
         guard let data = try? String(contentsOf: fileURL, encoding: .utf8) else { return [] }
         let decoder = JSONDecoder()

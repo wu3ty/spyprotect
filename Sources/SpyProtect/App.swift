@@ -156,6 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
 
         menu.addItem(NSMenuItem(title: "Run Security Check…", action: #selector(openSecurityCheck), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Export Log as PDF…", action: #selector(exportLogAsPDF), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Clear All Logs", action: #selector(clearAllLogs), keyEquivalent: ""))
         menu.addItem(.separator())
 
@@ -268,6 +269,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             alert.addButton(withTitle: "OK")
             alert.runModal()
         }
+    }
+
+    @objc private func exportLogAsPDF() {
+        PDFExporter.exportAllSessions()
     }
 
     @objc private func clearAllLogs() {
