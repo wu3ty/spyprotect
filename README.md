@@ -82,3 +82,6 @@ swift test
 - The camera only activates for about a second per failed unlock attempt; it is not
   continuously recording.
 - "Clear All Logs" in the right-click menu wipes stored history at any time.
+- Sessions and their snapshot photos are **automatically deleted after 30 days** - checked
+  once on launch and once every 24 hours while the app keeps running. This keeps history
+  from growing forever on a machine that stays logged in for months.

@@ -28,6 +28,14 @@ final class CameraCapture: NSObject {
         }
     }
 
+    /// Deletes specific photo files by absolute path - used to clean up snapshots
+    /// belonging to sessions that EventStore.pruneOlderThan just removed.
+    func deletePhotos(atPaths paths: [String]) {
+        for path in paths {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+    }
+
     /// Completion runs on the main queue with an absolute file path, or nil if no camera
     /// is available, access was denied, or capture otherwise failed.
     func capture(completion: @escaping (String?) -> Void) {

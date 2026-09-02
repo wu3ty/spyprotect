@@ -17,9 +17,9 @@ final class EventStoreTests: XCTestCase {
         super.tearDown()
     }
 
-    private func makeSession(events: [AwayEvent] = [], reviewed: Bool = false) -> AwaySession {
-        let locked = Date(timeIntervalSinceReferenceDate: 1000)
-        let unlocked = Date(timeIntervalSinceReferenceDate: 1060)
+    private func makeSession(lockedAt: Date? = nil, events: [AwayEvent] = [], reviewed: Bool = false) -> AwaySession {
+        let locked = lockedAt ?? Date(timeIntervalSinceReferenceDate: 1000)
+        let unlocked = locked.addingTimeInterval(60)
         return AwaySession(lockedAt: locked, unlockedAt: unlocked, events: events, reviewed: reviewed)
     }
 
@@ -89,6 +89,37 @@ final class EventStoreTests: XCTestCase {
         XCTAssertEqual(store.recent().count, 2)
 
         store.clearAll()
+        XCTAssertEqual(store.recent().count, 0)
+    }
+
+    func testPruneOlderThanRemovesOnlyOldSessionsAndReturnsTheirImagePaths() {
+        let now = Date()
+        let old = makeSession(
+            lockedAt: now.addingTimeInterval(-31 * 86400),
+            events: [AwayEvent(kind: .authFailure, timestamp: now, detail: "Failed unlock attempt", imagePath: "/tmp/old.jpg")]
+        )
+        let recentEnough = makeSession(lockedAt: now.addingTimeInterval(-29 * 86400))
+        let fresh = makeSession(lockedAt: now)
+        store.append(old)
+        store.append(recentEnough)
+        store.append(fresh)
+
+        let removedImagePaths = store.pruneOlderThan(days: 30)
+
+        XCTAssertEqual(removedImagePaths, ["/tmp/old.jpg"])
+        let remainingIDs = Set(store.recent().map(\.id))
+        XCTAssertEqual(remainingIDs, [recentEnough.id, fresh.id])
+    }
+
+    func testPruneOlderThanIsNoOpWhenNothingIsOld() {
+        store.append(makeSession(lockedAt: Date()))
+        XCTAssertTrue(store.pruneOlderThan(days: 30).isEmpty)
+        XCTAssertEqual(store.recent().count, 1)
+    }
+
+    func testPruneOlderThanCanEmptyTheStoreEntirely() {
+        store.append(makeSession(lockedAt: Date().addingTimeInterval(-60 * 86400)))
+        store.pruneOlderThan(days: 30)
         XCTAssertEqual(store.recent().count, 0)
     }
 }

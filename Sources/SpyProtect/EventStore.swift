@@ -93,4 +93,29 @@ final class EventStore {
     func clearAll() {
         try? FileManager.default.removeItem(at: fileURL)
     }
+
+    /// Deletes sessions whose `lockedAt` is older than `days` ago, and returns the
+    /// image paths those sessions referenced so the caller can also delete the
+    /// now-orphaned snapshot files (see CameraCapture.deletePhotos).
+    @discardableResult
+    func pruneOlderThan(days: Int) -> [String] {
+        let cutoff = Date().addingTimeInterval(-Double(days) * 86400)
+        let all = readAll()
+        let keep = all.filter { $0.lockedAt >= cutoff }
+        let removed = all.filter { $0.lockedAt < cutoff }
+        guard !removed.isEmpty else { return [] }
+
+        if keep.isEmpty {
+            try? FileManager.default.removeItem(at: fileURL)
+        } else {
+            let encoder = JSONEncoder()
+            let lines = keep.compactMap { session -> String? in
+                guard let data = try? encoder.encode(session) else { return nil }
+                return String(data: data, encoding: .utf8)
+            }
+            try? (lines.joined(separator: "\n") + "\n").write(to: fileURL, atomically: true, encoding: .utf8)
+        }
+
+        return removed.flatMap { $0.events.compactMap(\.imagePath) }
+    }
 }

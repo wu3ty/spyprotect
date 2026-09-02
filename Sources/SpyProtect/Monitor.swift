@@ -28,6 +28,11 @@ final class Monitor {
 
     private var usbWatcher: USBWatcher?
     private var authLogWatcher: AuthLogWatcher?
+    private var retentionTimer: Timer?
+
+    /// Sessions and their snapshot photos older than this are auto-deleted (documented
+    /// in README under Privacy notes).
+    static let retentionDays = 30
 
     private init() {}
 
@@ -80,6 +85,21 @@ final class Monitor {
         // but everything from here on is still captured.
         if isScreenCurrentlyLocked() {
             queue.async { self.lockedAt = Date() }
+        }
+
+        pruneOldData()
+        // Also re-run daily in case the app stays running for a long stretch without a
+        // relaunch (e.g. as a login item that's never quit) - otherwise pruning would
+        // only ever happen once, at whatever moment the app happened to start.
+        retentionTimer = Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { [weak self] _ in
+            self?.pruneOldData()
+        }
+    }
+
+    private func pruneOldData() {
+        let removedImagePaths = EventStore.shared.pruneOlderThan(days: Self.retentionDays)
+        if !removedImagePaths.isEmpty {
+            CameraCapture.shared.deletePhotos(atPaths: removedImagePaths)
         }
     }
 

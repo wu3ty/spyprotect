@@ -20,6 +20,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var aboutWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard Self.isOnlyInstance() else {
+            // Launched again (e.g. double-clicked in Finder) while already running as a
+            // login item - quit immediately rather than spawning a second menu bar icon
+            // and a second Monitor racing the first over the same log file.
+            NSLog("SpyProtect: another instance is already running - exiting.")
+            exit(0)
+        }
+
         model.reload()
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -51,6 +59,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         updateIcon(hasUnseen: model.hasUnseen)
 
         promptForLoginItemIfNeeded()
+    }
+
+    /// True unless another process with the same bundle identifier is already running.
+    private static func isOnlyInstance() -> Bool {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return true }
+        let myPID = ProcessInfo.processInfo.processIdentifier
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .filter { $0.processIdentifier != myPID }
+        return others.isEmpty
     }
 
     private static let hasPromptedLoginItemKey = "SpyProtect.hasPromptedLoginItem"
