@@ -8,6 +8,7 @@
   <a href="../../actions/workflows/lint.yml"><img src="../../actions/workflows/lint.yml/badge.svg" alt="Lint"></a>
   <a href="../../actions/workflows/ci.yml"><img src="../../actions/workflows/ci.yml/badge.svg" alt="Tests"></a>
   <a href="../../actions/workflows/release.yml"><img src="../../actions/workflows/release.yml/badge.svg" alt="Release"></a>
+  <a href="../../actions/workflows/ci.yml"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/wu3ty/spyprotect/main/coverage.json" alt="Coverage"></a>
 </p>
 
 A macOS menu bar app that watches for activity while your screen is locked, so you know
@@ -86,6 +87,15 @@ open SpyProtect.app
 ```bash
 swift test
 ```
+
+The coverage badge above reflects line coverage of the whole codebase, including the
+SwiftUI/AppKit views and the IOKit/AVFoundation hardware-interfacing code (USB
+detection, camera capture) that isn't practically unit-testable - so it's expected to
+sit well under 100%. The parts that matter most for correctness - event storage,
+session categorization, the lock-state gating that decides when the camera/notifications
+are allowed to fire, security checks, and update checking - are the ones actually covered
+by `Tests/SpyProtectTests`. CI regenerates this badge on every push to `main`, and (like
+the other badges) it only renders once this repository is public.
 
 ## Privacy notes
 

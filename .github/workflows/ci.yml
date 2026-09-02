@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Only the coverage-badge commit step needs write access; everything else here is
+# read-only.
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: macos-14
@@ -23,3 +28,26 @@ jobs:
 
       - name: Build app bundle (debug, sanity check)
         run: ./build_app.sh debug
+
+      - name: Generate coverage badge data
+        # Only on a direct push to main - a PR's coverage number isn't meaningful to
+        # commit back into main's badge, and PRs from forks can't push anyway.
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          swift test --enable-code-coverage
+          COV_JSON=$(swift test --show-codecov-path)
+          PCT=$(python3 -c "import json; d=json.load(open('$COV_JSON')); print(round(d['data'][0]['totals']['lines']['percent']))")
+          COLOR="red"
+          if [ "$PCT" -ge 80 ]; then COLOR="brightgreen"
+          elif [ "$PCT" -ge 60 ]; then COLOR="yellow"
+          fi
+          echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${PCT}%\",\"color\":\"$COLOR\"}" > coverage.json
+
+      - name: Commit coverage badge data
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add coverage.json
+          git diff --staged --quiet || git commit -m "Update coverage badge data [skip ci]"
+          git push
