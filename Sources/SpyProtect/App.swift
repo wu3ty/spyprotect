@@ -18,6 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var model = SessionListModel()
     private var securityCheckWindow: NSWindow?
     private var aboutWindow: NSWindow?
+    private var trustedDevicesWindow: NSWindow?
+    private var trustedDevicesModel: TrustedDevicesModel?
     private var updateCheckTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -51,6 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         model.onUnseenChanged = { [weak self] hasUnseen in
             self?.updateIcon(hasUnseen: hasUnseen)
+        }
+        model.onShowTrustedDevices = { [weak self] in
+            self?.openTrustedDevices()
         }
 
         Monitor.shared.onNewSession = { [weak self] session in
@@ -216,6 +221,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             popover.performClose(button)
         } else {
             model.reload()
+            // Without this, the popover shows but never becomes key (the app is
+            // `.accessory`, so it isn't automatically activated) - AppKit then renders
+            // every control in its dimmed "inactive" appearance until the user clicks
+            // inside it, which is what actually activates the app.
+            NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             model.clearBadge()
         }
@@ -330,6 +340,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.center()
         window.isReleasedWhenClosed = false
         securityCheckWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func openTrustedDevices() {
+        let devicesModel = trustedDevicesModel ?? TrustedDevicesModel()
+        trustedDevicesModel = devicesModel
+        devicesModel.scanForNewDevices()
+
+        if let window = trustedDevicesWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 480),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered, defer: false)
+        window.title = "Trusted Devices"
+        window.contentView = NSHostingView(rootView: TrustedDevicesView(model: devicesModel))
+        window.center()
+        window.isReleasedWhenClosed = false
+        trustedDevicesWindow = window
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }

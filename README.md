@@ -18,7 +18,10 @@ if anyone tried to get in while you were away.
 
 - **Failed unlock attempts** (with a webcam snapshot of whoever tried)
 - **USB devices connecting/disconnecting**, with keyboard/HID-class devices flagged
-  separately (the class code keystroke-injection "BadUSB" attacks impersonate)
+  separately (the class code keystroke-injection "BadUSB" attacks impersonate). A device
+  seen while unlocked is remembered as trusted (view them via the "Trusted Devices"
+  button in the popover), so your own keyboard/mouse/dongle reconnecting later while
+  locked doesn't retrigger a snapshot + alert
 - **Apps launched** while the screen was locked
 
 Everything is scoped to the actual locked→unlocked window - nothing is logged while
@@ -111,8 +114,6 @@ the other badges) it only renders once this repository is public.
 
 - [ ] Sign and notarize the app with an Apple Developer ID, so downloaded builds open
       without a Gatekeeper warning (currently ad-hoc signed only)
-- [ ] Reduce HID-detection false positives with a known/trusted-device allowlist, so
-      your own keyboard/mouse/trackpad reconnecting doesn't retrigger a snapshot + alert
 
 ## Privacy notes
 

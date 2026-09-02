@@ -20,8 +20,9 @@ private func isScreenCurrentlyLocked() -> Bool {
 /// not the same as the screen actually being locked, and only the latter should ever be
 /// visible or have a side effect. On unlock we slice the buffer down to the away window.
 ///
-/// Camera capture, notifications, and session persistence are all injectable (defaulting
-/// to the real singletons) so tests can exercise the actual detector entry points -
+/// Camera capture, notifications, session persistence, and the trusted-HID-device store
+/// are all injectable (defaulting to the real singletons) so tests can exercise the
+/// actual detector entry points -
 /// handleUSBEvent, handleHIDDetected, handleAuthFailure, handleAppLaunched - with spies,
 /// instead of only being able to review the lock-state gating by eye.
 final class Monitor {
@@ -41,6 +42,8 @@ final class Monitor {
     private let notify: (AwayEvent.Kind, String) -> Void
     private let notifySessionSummary: (AwaySession) -> Void
     private let appendSession: (AwaySession) -> Void
+    private let isHIDDeviceTrusted: (_ vendorID: Int, _ productID: Int) -> Bool
+    private let trustHIDDevice: (_ vendorID: Int, _ productID: Int, _ name: String) -> Void
 
     /// Sessions and their snapshot photos older than this are auto-deleted (documented
     /// in README under Privacy notes).
@@ -50,12 +53,20 @@ final class Monitor {
         cameraCapture: @escaping (@escaping (String?) -> Void) -> Void = { CameraCapture.shared.capture(completion: $0) },
         notify: @escaping (AwayEvent.Kind, String) -> Void = { NotificationManager.shared.notify(kind: $0, detail: $1) },
         notifySessionSummary: @escaping (AwaySession) -> Void = { NotificationManager.shared.notifySessionSummary($0) },
-        appendSession: @escaping (AwaySession) -> Void = { EventStore.shared.append($0) }
+        appendSession: @escaping (AwaySession) -> Void = { EventStore.shared.append($0) },
+        isHIDDeviceTrusted: @escaping (_ vendorID: Int, _ productID: Int) -> Bool = {
+            TrustedHIDDeviceStore.shared.isTrusted(vendorID: $0, productID: $1)
+        },
+        trustHIDDevice: @escaping (_ vendorID: Int, _ productID: Int, _ name: String) -> Void = {
+            TrustedHIDDeviceStore.shared.trust(vendorID: $0, productID: $1, name: $2)
+        }
     ) {
         self.cameraCapture = cameraCapture
         self.notify = notify
         self.notifySessionSummary = notifySessionSummary
         self.appendSession = appendSession
+        self.isHIDDeviceTrusted = isHIDDeviceTrusted
+        self.trustHIDDevice = trustHIDDevice
     }
 
     func start() {
@@ -74,8 +85,8 @@ final class Monitor {
             onEvent: { [weak self] deviceName, inserted in
                 self?.handleUSBEvent(deviceName: deviceName, inserted: inserted)
             },
-            onHIDDetected: { [weak self] deviceName in
-                self?.handleHIDDetected(deviceName: deviceName)
+            onHIDDetected: { [weak self] deviceName, vendorID, productID in
+                self?.handleHIDDetected(deviceName: deviceName, vendorID: vendorID, productID: productID)
             }
         )
         usbWatcher?.start()
@@ -117,14 +128,28 @@ final class Monitor {
         record(kind: inserted ? .usbInserted : .usbRemoved, detail: label)
     }
 
-    func handleHIDDetected(deviceName: String) {
+    func handleHIDDetected(deviceName: String, vendorID: Int? = nil, productID: Int? = nil) {
         // This fires on any HID-class USB interface appearing (keyboards, mice,
         // dongles) regardless of what's happening on screen, and must never take a
         // photo or notify during normal, unlocked use.
-        guard isCurrentlyLocked else { return }
+        guard isCurrentlyLocked else {
+            // Seeing this device while unlocked - i.e. during normal, active use, not
+            // appearing out of nowhere while away - is exactly what makes it trustworthy.
+            // Remember it so a later reconnect while locked (e.g. the same keyboard
+            // re-enumerating after sleep/wake) doesn't retrigger a snapshot + alert.
+            if let vendorID, let productID {
+                trustHIDDevice(vendorID, productID, deviceName)
+            }
+            return
+        }
+        if let vendorID, let productID, isHIDDeviceTrusted(vendorID, productID) {
+            record(kind: .usbHIDConnected, detail: "Known keyboard/HID-class device reconnected: \(deviceName)")
+            return
+        }
         // Same treatment as a failed unlock attempt - this is the class code
         // keystroke-injection USB attacks impersonate, so it's worth a snapshot too.
-        // Note it also fires for legitimate keyboards/mice/dongles.
+        // Note it also fires for legitimate keyboards/mice/dongles never seen while
+        // unlocked before (e.g. the very first time this app runs).
         cameraCapture { [weak self] imagePath in
             self?.record(kind: .usbHIDConnected,
                           detail: "Keyboard/HID-class device connected: \(deviceName)",

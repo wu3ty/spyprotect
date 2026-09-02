@@ -11,7 +11,10 @@ import IOKit.usb
 /// attack.
 final class USBWatcher {
     private let onEvent: (_ detail: String, _ inserted: Bool) -> Void
-    private let onHIDDetected: (_ detail: String) -> Void
+    /// vendorID/productID are nil only if the parent device's IORegistry entry couldn't
+    /// be read - callers that key trust decisions off these should treat a nil pair as
+    /// "unidentifiable", not "untrusted".
+    private let onHIDDetected: (_ detail: String, _ vendorID: Int?, _ productID: Int?) -> Void
 
     private var notifyPort: IONotificationPortRef?
     private var addedIterator: io_iterator_t = 0
@@ -21,7 +24,7 @@ final class USBWatcher {
     private static let hidInterfaceClass: UInt8 = 3
 
     init(onEvent: @escaping (_ detail: String, _ inserted: Bool) -> Void,
-         onHIDDetected: @escaping (_ detail: String) -> Void) {
+         onHIDDetected: @escaping (_ detail: String, _ vendorID: Int?, _ productID: Int?) -> Void) {
         self.onEvent = onEvent
         self.onHIDDetected = onHIDDetected
     }
@@ -66,6 +69,32 @@ final class USBWatcher {
         USBWatcher.drainSilently(hidAddedIterator)
     }
 
+    /// One-shot, synchronous snapshot of every currently-connected HID interface,
+    /// independent of the ongoing notification stream above. `start()` only reports a
+    /// device via `onHIDDetected` the moment it (re-)enumerates - a device that was
+    /// already connected before the watcher started (e.g. a built-in keyboard/trackpad,
+    /// or anything plugged in before this app launch) never gets a fresh "first match"
+    /// and so is otherwise never trusted. Callers use this to catch those up on demand.
+    static func scanCurrentlyConnectedHIDDevices() -> [(name: String, vendorID: Int?, productID: Int?)] {
+        guard let matching = IOServiceMatching("IOUSBHostInterface") else { return [] }
+        var iterator: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS else { return [] }
+        defer { IOObjectRelease(iterator) }
+
+        var results: [(name: String, vendorID: Int?, productID: Int?)] = []
+        var interface = IOIteratorNext(iterator)
+        while interface != 0 {
+            if interfaceClass(interface) == hidInterfaceClass {
+                let name = describeParentDevice(of: interface) ?? "USB HID device"
+                let (vendorID, productID) = parentVendorAndProductID(of: interface)
+                results.append((name: name, vendorID: vendorID, productID: productID))
+            }
+            IOObjectRelease(interface)
+            interface = IOIteratorNext(iterator)
+        }
+        return results
+    }
+
     private static func drainSilently(_ iterator: io_iterator_t) {
         var entry = IOIteratorNext(iterator)
         while entry != 0 {
@@ -79,7 +108,7 @@ final class USBWatcher {
         let watcher = Unmanaged<USBWatcher>.fromOpaque(refcon).takeUnretainedValue()
         var device = IOIteratorNext(iterator)
         while device != 0 {
-            let name = watcher.describe(device)
+            let name = describe(device)
             watcher.onEvent(name, inserted)
             IOObjectRelease(device)
             device = IOIteratorNext(iterator)
@@ -91,16 +120,17 @@ final class USBWatcher {
         let watcher = Unmanaged<USBWatcher>.fromOpaque(refcon).takeUnretainedValue()
         var interface = IOIteratorNext(iterator)
         while interface != 0 {
-            if watcher.interfaceClass(interface) == hidInterfaceClass {
-                let name = watcher.describeParentDevice(of: interface) ?? "USB HID device"
-                watcher.onHIDDetected(name)
+            if interfaceClass(interface) == hidInterfaceClass {
+                let name = describeParentDevice(of: interface) ?? "USB HID device"
+                let (vendorID, productID) = parentVendorAndProductID(of: interface)
+                watcher.onHIDDetected(name, vendorID, productID)
             }
             IOObjectRelease(interface)
             interface = IOIteratorNext(iterator)
         }
     }
 
-    private func describe(_ device: io_object_t) -> String {
+    private static func describe(_ device: io_object_t) -> String {
         var nameBuf = [CChar](repeating: 0, count: 128)
         if IORegistryEntryGetName(device, &nameBuf) == KERN_SUCCESS {
             return String(cString: nameBuf)
@@ -108,19 +138,32 @@ final class USBWatcher {
         return "USB device"
     }
 
-    private func interfaceClass(_ interface: io_object_t) -> UInt8? {
-        guard let ref = IORegistryEntryCreateCFProperty(interface, "bInterfaceClass" as CFString, kCFAllocatorDefault, 0) else {
-            return nil
-        }
-        return (ref.takeRetainedValue() as? NSNumber)?.uint8Value
+    private static func interfaceClass(_ interface: io_object_t) -> UInt8? {
+        intProperty(interface, "bInterfaceClass").map(UInt8.init)
     }
 
-    private func describeParentDevice(of interface: io_object_t) -> String? {
+    private static func describeParentDevice(of interface: io_object_t) -> String? {
         var parent: io_registry_entry_t = 0
         guard IORegistryEntryGetParentEntry(interface, kIOServicePlane, &parent) == KERN_SUCCESS else { return nil }
         defer { IOObjectRelease(parent) }
         var nameBuf = [CChar](repeating: 0, count: 128)
         guard IORegistryEntryGetName(parent, &nameBuf) == KERN_SUCCESS else { return nil }
         return String(cString: nameBuf)
+    }
+
+    /// idVendor/idProduct live on the top-level USB device, same as the name read by
+    /// describeParentDevice(of:) above - not on the HID interface itself.
+    private static func parentVendorAndProductID(of interface: io_object_t) -> (Int?, Int?) {
+        var parent: io_registry_entry_t = 0
+        guard IORegistryEntryGetParentEntry(interface, kIOServicePlane, &parent) == KERN_SUCCESS else { return (nil, nil) }
+        defer { IOObjectRelease(parent) }
+        return (intProperty(parent, "idVendor"), intProperty(parent, "idProduct"))
+    }
+
+    private static func intProperty(_ entry: io_object_t, _ key: String) -> Int? {
+        guard let ref = IORegistryEntryCreateCFProperty(entry, key as CFString, kCFAllocatorDefault, 0) else {
+            return nil
+        }
+        return (ref.takeRetainedValue() as? NSNumber)?.intValue
     }
 }

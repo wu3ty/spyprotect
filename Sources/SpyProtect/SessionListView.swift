@@ -21,6 +21,10 @@ final class SessionListModel: ObservableObject {
     /// can reflect new critical events immediately.
     var onUnseenChanged: ((Bool) -> Void)?
 
+    /// Called when "Trusted Devices" is tapped - AppDelegate owns opening the actual
+    /// window, same as it does for the security check and about windows.
+    var onShowTrustedDevices: (() -> Void)?
+
     private static let lastSeenKey = "SpyProtect.lastSeenAt"
     private static let badgeClearedKey = "SpyProtect.badgeClearedAt"
 
@@ -96,6 +100,10 @@ struct SessionListView: View {
                 Text("SpyProtect")
                     .font(.title2).bold()
                 Spacer()
+                Button("Trusted Devices") {
+                    model.onShowTrustedDevices?()
+                }
+                .font(.body)
                 if model.oldCount > 0 {
                     Button(model.showOld ? "Hide old" : "Show \(model.oldCount) old") {
                         model.showOld.toggle()
