@@ -29,6 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             exit(0)
         }
 
+        showWelcomeIfNeeded()
+
         model.reload()
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -70,6 +72,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
             .filter { $0.processIdentifier != myPID }
         return others.isEmpty
+    }
+
+    private static let hasShownWelcomeKey = "SpyProtect.hasShownWelcome"
+
+    /// Shown once, before anything else (permission prompts, the login-item prompt,
+    /// even starting the monitor) - macOS's Camera/Notification dialogs are a lot less
+    /// jarring for someone downloading this cold if they've just been told, in plain
+    /// language, why the app wants them and what it actually watches for.
+    private func showWelcomeIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: Self.hasShownWelcomeKey) else { return }
+        UserDefaults.standard.set(true, forKey: Self.hasShownWelcomeKey)
+
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Welcome to SpyProtect"
+        alert.informativeText = """
+            SpyProtect watches for activity while your screen is locked, so you know if anyone tried to get in while you were away.
+
+            It logs:
+            • Failed unlock attempts (with a webcam snapshot of whoever tried)
+            • USB devices connecting or disconnecting, with keyboard/HID-class devices flagged separately
+            • Apps launched while the screen was locked
+
+            Nothing is logged while you're actively using the machine - only during the actual locked window. Everything stays on this computer; nothing is sent anywhere.
+
+            Next, macOS will ask for Notification and Camera permission - both are needed for the features above.
+            """
+        alert.addButton(withTitle: "Get Started")
+        alert.runModal()
     }
 
     private static let hasPromptedLoginItemKey = "SpyProtect.hasPromptedLoginItem"
