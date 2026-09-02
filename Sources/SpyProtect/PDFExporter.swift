@@ -13,6 +13,7 @@ enum PDFExporter {
         panel.nameFieldStringValue = "SpyProtect-Log-\(dateStamp()).pdf"
         panel.allowedContentTypes = [.pdf]
         panel.canCreateDirectories = true
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
 
         NSApp.activate(ignoringOtherApps: true)
         panel.begin { response in
