@@ -14,9 +14,11 @@ private func isScreenCurrentlyLocked() -> Bool {
     return (info["CGSSessionScreenIsLocked"] as? Int ?? 0) != 0
 }
 
-/// Central coordinator: watchers append events here continuously (regardless of lock
-/// state, since e.g. a USB device could be inserted right as the screen locks), and on
-/// unlock we slice out everything that happened during the away window.
+/// Central coordinator: watchers report raw detections continuously, but every one of
+/// them is gated on `isCurrentlyLocked` before it's allowed to touch the camera, fire a
+/// notification, or even be buffered - detecting something (a log line, a USB event) is
+/// not the same as the screen actually being locked, and only the latter should ever be
+/// visible or have a side effect. On unlock we slice the buffer down to the away window.
 final class Monitor {
     static let shared = Monitor()
 
@@ -50,15 +52,21 @@ final class Monitor {
 
         usbWatcher = USBWatcher(
             onEvent: { [weak self] deviceName, inserted in
+                guard let self, self.isCurrentlyLocked else { return }
                 let label = inserted ? "USB device connected: \(deviceName)" : "USB device disconnected: \(deviceName)"
-                self?.record(kind: inserted ? .usbInserted : .usbRemoved, detail: label)
+                self.record(kind: inserted ? .usbInserted : .usbRemoved, detail: label)
             },
             onHIDDetected: { [weak self] deviceName in
+                // Gate on the screen actually being locked BEFORE touching the camera -
+                // this fires on any HID-class USB interface appearing (keyboards, mice,
+                // dongles) regardless of what's happening on screen, and must never take
+                // a photo or notify during normal, unlocked use.
+                guard let self, self.isCurrentlyLocked else { return }
                 // Same treatment as a failed unlock attempt - this is the class code
                 // keystroke-injection USB attacks impersonate, so it's worth a snapshot
                 // too. Note it also fires for legitimate keyboards/mice/dongles.
                 CameraCapture.shared.capture { imagePath in
-                    self?.record(kind: .usbHIDConnected,
+                    self.record(kind: .usbHIDConnected,
                                  detail: "Keyboard/HID-class device connected: \(deviceName)",
                                  imagePath: imagePath)
                 }
@@ -67,12 +75,19 @@ final class Monitor {
         usbWatcher?.start()
 
         authLogWatcher = AuthLogWatcher { [weak self] detail in
+            // Gate on lock state BEFORE touching the camera. The log predicate is a
+            // heuristic on system log phrasing - it can also match a local
+            // authentication prompt (Touch ID, a password manager, signing into a
+            // website with a passkey) that happens while the Mac is unlocked and in
+            // active, normal use. Never take a photo or notify unless we're actually in
+            // a confirmed locked/away window.
+            guard let self, self.isCurrentlyLocked else { return }
             // Snapshot whoever's at the keyboard right when a failed attempt is
             // detected. Capture runs async (camera warm-up + exposure settle), so the
             // event is recorded once the photo is ready (or immediately with no photo
             // if capture fails/is denied) rather than blocking detection on it.
             CameraCapture.shared.capture { imagePath in
-                self?.record(kind: .authFailure, detail: detail, imagePath: imagePath)
+                self.record(kind: .authFailure, detail: detail, imagePath: imagePath)
             }
         }
         authLogWatcher?.start()
@@ -96,6 +111,14 @@ final class Monitor {
         }
     }
 
+    /// Thread-safe read of whether we're currently in a locked/away window - the single
+    /// gate every detector must pass before touching the camera, firing a notification,
+    /// or even bothering to record anything. Detecting something is not the same as
+    /// being locked; only the latter should ever have a visible side effect.
+    private var isCurrentlyLocked: Bool {
+        queue.sync { lockedAt != nil }
+    }
+
     private func pruneOldData() {
         let removedImagePaths = EventStore.shared.pruneOlderThan(days: Self.retentionDays)
         if !removedImagePaths.isEmpty {
@@ -117,6 +140,7 @@ final class Monitor {
     }
 
     @objc private func appLaunched(_ note: Notification) {
+        guard isCurrentlyLocked else { return }
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
         record(kind: .appLaunched, detail: app.localizedName ?? app.bundleIdentifier ?? "unknown app")
     }
