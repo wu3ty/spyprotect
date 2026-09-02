@@ -3,7 +3,7 @@
 # CONFIG=debug|release - defaults to debug for fast local iteration.
 CONFIG ?= debug
 APP := SpyProtect.app
-BUNDLE_ID := dev.stefanguericke.SpyProtect
+BUNDLE_ID := dev.wu3ty.SpyProtect
 
 help:
 	@echo "make build     - swift build (CONFIG=debug|release, default debug)"

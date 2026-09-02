@@ -5,7 +5,7 @@
     <key>CFBundleExecutable</key>
     <string>SpyProtect</string>
     <key>CFBundleIdentifier</key>
-    <string>dev.stefanguericke.SpyProtect</string>
+    <string>dev.wu3ty.SpyProtect</string>
     <key>CFBundleName</key>
     <string>SpyProtect</string>
     <key>CFBundleIconFile</key>
