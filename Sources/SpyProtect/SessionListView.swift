@@ -88,6 +88,11 @@ struct SessionListView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
+                if let logo = Bundle.main.image(forResource: "AppLogoSmall") {
+                    Image(nsImage: logo)
+                        .resizable()
+                        .frame(width: 24, height: 24)
+                }
                 Text("SpyProtect")
                     .font(.title2).bold()
                 Spacer()

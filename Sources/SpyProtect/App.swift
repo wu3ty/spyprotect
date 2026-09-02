@@ -112,6 +112,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// at the cost of the eye shape itself not auto-inverting for dark menu bars.
     private static let menuIconAlert: NSImage? = Bundle.main.image(forResource: "MenuIconAlert")
 
+    /// The full-color shield-and-eye logo (as opposed to the monochrome status bar
+    /// glyph above) - used for branding in the right-click menu header and the popover
+    /// title, sized down for a menu row.
+    private static let logoIcon: NSImage? = {
+        let image = Bundle.main.image(forResource: "AppLogoSmall")
+        image?.size = NSSize(width: 18, height: 18)
+        return image
+    }()
+
     @objc private func handleClick(_ sender: AnyObject) {
         guard let button = statusItem?.button else { return }
         let isRightClick = NSApp.currentEvent?.type == .rightMouseUp
@@ -131,6 +140,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func buildStatusMenu() -> NSMenu {
         model.reload()
         let menu = NSMenu()
+
+        let header = NSMenuItem(title: "SpyProtect", action: nil, keyEquivalent: "")
+        header.image = Self.logoIcon
+        header.isEnabled = false
+        menu.addItem(header)
+        menu.addItem(.separator())
 
         let unseenCount = model.sessions.filter { model.isNew($0) }.count
         if unseenCount > 0 {
