@@ -15,5 +15,8 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
+      - name: Install swift-format
+        run: brew install swift-format
+
       - name: swift-format lint
-        run: swift format lint --recursive Sources Tests Package.swift
+        run: swift-format lint --recursive Sources Tests Package.swift
