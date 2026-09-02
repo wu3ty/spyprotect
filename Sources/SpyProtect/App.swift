@@ -90,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.reload()
         let menu = NSMenu()
 
-        let unseenCount = model.sessions.count { model.isNew($0) }
+        let unseenCount = model.sessions.filter { model.isNew($0) }.count
         if unseenCount > 0 {
             let summary = NSMenuItem(title: "⚠️ \(unseenCount) new away session(s) with activity", action: nil, keyEquivalent: "")
             summary.isEnabled = false

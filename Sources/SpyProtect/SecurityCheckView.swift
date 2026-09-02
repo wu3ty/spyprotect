@@ -20,8 +20,8 @@ final class SecurityCheckModel: ObservableObject {
 struct SecurityCheckView: View {
     @ObservedObject var model: SecurityCheckModel
 
-    private var secureCount: Int { model.checks.count { $0.status == .secure } }
-    private var warningCount: Int { model.checks.count { $0.status == .warning } }
+    private var secureCount: Int { model.checks.filter { $0.status == .secure }.count }
+    private var warningCount: Int { model.checks.filter { $0.status == .warning }.count }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

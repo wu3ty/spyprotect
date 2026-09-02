@@ -39,7 +39,7 @@ final class SessionListModel: ObservableObject {
     }
 
     var oldCount: Int {
-        sessions.count { !isNew($0) }
+        sessions.filter { !isNew($0) }.count
     }
 
     func isNew(_ session: AwaySession) -> Bool {
