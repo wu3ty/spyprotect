@@ -73,19 +73,29 @@ Requires Xcode (for the macOS SDK) and its command-line tools.
 ```bash
 git clone <this repo>
 cd SpyProtect
-./build_app.sh release
+make release
 open SpyProtect.app
 ```
 
-`./build_app.sh` (no argument) builds a debug binary for local iteration;
-`./build_app.sh release` builds an optimized release build - both produce
-`SpyProtect.app` in the project root, ad-hoc signed so macOS treats it as a real app
-(own entry in Notification settings, stable TCC identity across relaunches, etc.).
+```
+make build     - swift build (CONFIG=debug|release, default debug)
+make app       - build and package SpyProtect.app (CONFIG=debug|release)
+make release   - shortcut for 'make app CONFIG=release'
+make run       - build SpyProtect.app (debug) and relaunch it
+make test      - run unit tests
+make lint      - run 'swift format lint'
+make clean     - remove .build and SpyProtect.app
+make install   - build a release SpyProtect.app and copy it to /Applications
+```
+
+`make app`/`make release` produce `SpyProtect.app` in the project root, ad-hoc signed so
+macOS treats it as a real app (own entry in Notification settings, stable TCC identity
+across relaunches, etc.).
 
 ## Running tests
 
 ```bash
-swift test
+make test
 ```
 
 The coverage badge above reflects line coverage of the whole codebase, including the
@@ -96,6 +106,13 @@ session categorization, the lock-state gating that decides when the camera/notif
 are allowed to fire, security checks, and update checking - are the ones actually covered
 by `Tests/SpyProtectTests`. CI regenerates this badge on every push to `main`, and (like
 the other badges) it only renders once this repository is public.
+
+## TODO
+
+- [ ] Sign and notarize the app with an Apple Developer ID, so downloaded builds open
+      without a Gatekeeper warning (currently ad-hoc signed only)
+- [ ] Reduce HID-detection false positives with a known/trusted-device allowlist, so
+      your own keyboard/mouse/trackpad reconnecting doesn't retrigger a snapshot + alert
 
 ## Privacy notes
 

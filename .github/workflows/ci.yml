@@ -21,13 +21,13 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode.app
 
       - name: Build
-        run: swift build
+        run: make build
 
       - name: Run tests
-        run: swift test
+        run: make test
 
       - name: Build app bundle (debug, sanity check)
-        run: ./build_app.sh debug
+        run: make app
 
       - name: Generate coverage badge data
         # Only on a direct push to main - a PR's coverage number isn't meaningful to
