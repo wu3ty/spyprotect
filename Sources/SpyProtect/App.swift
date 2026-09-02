@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var model = SessionListModel()
     private var securityCheckWindow: NSWindow?
     private var aboutWindow: NSWindow?
+    private var updateCheckTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard Self.isOnlyInstance() else {
@@ -59,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         updateIcon(hasUnseen: model.hasUnseen)
 
         promptForLoginItemIfNeeded()
+        scheduleAutoUpdateCheckIfNeeded()
     }
 
     /// True unless another process with the same bundle identifier is already running.
@@ -146,6 +148,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         loginItem.state = LoginItemManager.isEnabled ? .on : .off
         menu.addItem(loginItem)
         menu.addItem(.separator())
+
+        menu.addItem(NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdatesManually), keyEquivalent: ""))
+        let autoUpdateItem = NSMenuItem(title: "Automatically Check for Updates", action: #selector(toggleAutoUpdateCheck), keyEquivalent: "")
+        autoUpdateItem.state = Self.autoCheckForUpdatesEnabled ? .on : .off
+        menu.addItem(autoUpdateItem)
+        menu.addItem(.separator())
+
         menu.addItem(NSMenuItem(title: "About SpyProtect", action: #selector(openAbout), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit SpyProtect", action: #selector(quit), keyEquivalent: "q"))
@@ -176,6 +185,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func toggleLoginItem() {
         LoginItemManager.setEnabled(!LoginItemManager.isEnabled)
+    }
+
+    private static let autoCheckForUpdatesKey = "SpyProtect.autoCheckForUpdates"
+
+    /// Defaults to on: a security tool is more useful staying current without you having
+    /// to remember to check, and this only ever shows a notification (never an
+    /// interrupting alert) when it finds something.
+    private static var autoCheckForUpdatesEnabled: Bool {
+        UserDefaults.standard.object(forKey: autoCheckForUpdatesKey) as? Bool ?? true
+    }
+
+    private func scheduleAutoUpdateCheckIfNeeded() {
+        updateCheckTimer?.invalidate()
+        updateCheckTimer = nil
+        guard Self.autoCheckForUpdatesEnabled else { return }
+
+        checkForUpdatesSilently()
+        // Once a day is plenty for a background check; this mirrors the retention
+        // timer's cadence in Monitor for the same reason (long-running login item).
+        updateCheckTimer = Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { [weak self] _ in
+            self?.checkForUpdatesSilently()
+        }
+    }
+
+    private func checkForUpdatesSilently() {
+        UpdateChecker.checkForUpdate { result in
+            guard case .success(let update) = result, update.isUpdateAvailable else { return }
+            NotificationManager.shared.notifyUpdateAvailable(version: update.latestVersion)
+        }
+    }
+
+    @objc private func toggleAutoUpdateCheck() {
+        let newValue = !Self.autoCheckForUpdatesEnabled
+        UserDefaults.standard.set(newValue, forKey: Self.autoCheckForUpdatesKey)
+        scheduleAutoUpdateCheckIfNeeded()
+    }
+
+    @objc private func checkForUpdatesManually() {
+        UpdateChecker.checkForUpdate { [weak self] result in
+            self?.presentManualUpdateCheckResult(result)
+        }
+    }
+
+    private func presentManualUpdateCheckResult(_ result: Result<UpdateCheckResult, Error>) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+
+        switch result {
+        case .success(let update) where update.isUpdateAvailable:
+            alert.messageText = "Update Available"
+            alert.informativeText = "Version \(update.latestVersion) is available (you have \(update.currentVersion))."
+            alert.addButton(withTitle: "View Release")
+            alert.addButton(withTitle: "Later")
+            if alert.runModal() == .alertFirstButtonReturn, let url = update.releaseURL {
+                NSWorkspace.shared.open(url)
+            }
+        case .success(let update):
+            alert.messageText = "You're Up to Date"
+            alert.informativeText = "SpyProtect \(update.currentVersion) is the latest version."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        case .failure(let error):
+            alert.alertStyle = .warning
+            alert.messageText = "Couldn't Check for Updates"
+            alert.informativeText = error.localizedDescription
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
     }
 
     @objc private func clearAllLogs() {

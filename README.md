@@ -49,9 +49,21 @@ worth checking manually since they can't be read reliably from the command line.
      scroll down to *"SpyProtect.app" was blocked to protect your Mac* → **Open Anyway**,
      then confirm once more when it launches.
 3. On first launch, macOS will ask for **Notification** and **Camera** permission -
-   both are needed for the core features (alerts, and the failed-unlock snapshot).
-4. Move it to `/Applications` if you want it to stick around, and consider adding it as
-   a Login Item (System Settings → General → Login Items) so it starts automatically.
+   both are needed for the core features (alerts, and the failed-unlock snapshot). It
+   will also ask once whether to start automatically at login - you can change that
+   answer anytime from the right-click menu ("Start at Login").
+4. Move it to `/Applications` if you want it to stick around.
+
+## Updates
+
+The right-click menu has **Check for Updates…** for a manual check, and an
+**Automatically Check for Updates** toggle (on by default) that checks once a day in the
+background and only shows a notification if something newer is actually available -
+routine checks that find nothing stay silent.
+
+This works by querying GitHub's public releases API, which means it only functions once
+this repository is **public**. While it's private, both the manual and automatic checks
+fail gracefully with a "repository may still be private" message instead of erroring.
 
 ## Building from source
 

@@ -58,6 +58,14 @@ final class NotificationManager {
         send(body: body, title: "SpyProtect", subtitle: subtitle, sound: .default)
     }
 
+    /// Fired by a silent background update check (not the manual "Check for Updates…"
+    /// menu action, which shows an alert instead) - only when an update actually exists,
+    /// so this stays quiet on every routine check that finds nothing new.
+    func notifyUpdateAvailable(version: String) {
+        send(body: "Version \(version) is available - click to see what's new.",
+             title: "SpyProtect", subtitle: "Update available")
+    }
+
     private func send(body: String, title: String, subtitle: String, sound: UNNotificationSound? = nil) {
         let content = UNMutableNotificationContent()
         content.title = title
