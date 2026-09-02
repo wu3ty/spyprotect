@@ -58,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         NotificationManager.shared.requestAuthorization()
         NotificationManager.shared.notifyStartupCheck()
+        CameraCapture.shared.requestAccessIfNeeded()
         Monitor.shared.start()
         updateIcon(hasUnseen: model.hasUnseen)
 

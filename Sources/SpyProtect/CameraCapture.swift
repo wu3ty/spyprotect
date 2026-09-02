@@ -36,6 +36,27 @@ final class CameraCapture: NSObject {
         }
     }
 
+    /// Resolves the camera permission prompt proactively - call this at launch, while
+    /// the user is present and unlocked. Otherwise the first time permission would be
+    /// requested is the first real `capture()` call, which only ever happens during an
+    /// actual locked/away window (see Monitor's isCurrentlyLocked gating) - exactly the
+    /// moment a system permission dialog can't be meaningfully answered by whoever's
+    /// locked out, silently costing us the one photo that mattered most.
+    func requestAccessIfNeeded(completion: @escaping (Bool) -> Void = { _ in }) {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            completion(true)
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async { completion(granted) }
+            }
+        case .denied, .restricted:
+            completion(false)
+        @unknown default:
+            completion(false)
+        }
+    }
+
     /// Completion runs on the main queue with an absolute file path, or nil if no camera
     /// is available, access was denied, or capture otherwise failed.
     func capture(completion: @escaping (String?) -> Void) {
