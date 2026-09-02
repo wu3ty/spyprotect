@@ -22,10 +22,22 @@ worth checking manually since they can't be read reliably from the command line.
 ## Installing a release build
 
 1. Download `SpyProtect.zip` from the [Releases](../../releases) page and unzip it.
-2. **This build is not notarized or signed with an Apple Developer ID**, so macOS
-   Gatekeeper will refuse to open it with a normal double-click. Instead: right-click
-   `SpyProtect.app` → **Open** → **Open** in the confirmation dialog. You only need to do
-   this once.
+2. **This build is not notarized or signed with an Apple Developer ID**, so Gatekeeper
+   will block it. On recent macOS, a plain right-click → Open often doesn't even offer
+   an override - you may just see:
+
+   > "Apple could not verify 'SpyProtect.app' is free of malware..."
+
+   Two ways past it (only needed once):
+
+   - **Terminal** (fastest): remove the quarantine flag the download attached -
+     ```bash
+     xattr -cr ~/Downloads/SpyProtect.app
+     ```
+     (adjust the path if you unzipped it somewhere else), then open it normally.
+   - **System Settings**: after the block, open System Settings → Privacy & Security →
+     scroll down to *"SpyProtect.app" was blocked to protect your Mac* → **Open Anyway**,
+     then confirm once more when it launches.
 3. On first launch, macOS will ask for **Notification** and **Camera** permission -
    both are needed for the core features (alerts, and the failed-unlock snapshot).
 4. Move it to `/Applications` if you want it to stick around, and consider adding it as
