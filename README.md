@@ -14,6 +14,11 @@
 A macOS menu bar app that watches for activity while your screen is locked, so you know
 if anyone tried to get in while you were away.
 
+<p align="center">
+  <img src="Resources/docs/screenshot-popover.png" width="420" alt="SpyProtect popover showing away sessions, with a failed unlock attempt and USB device activity logged (device names and snapshot photos blurred out)">
+  <img src="Resources/docs/screenshot-menu.png" width="300" alt="SpyProtect right-click menu with Security Check, PDF export, and other actions">
+</p>
+
 ## What it logs
 
 - **Failed unlock attempts** (with a webcam snapshot of whoever tried)
