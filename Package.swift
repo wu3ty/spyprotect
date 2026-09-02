@@ -8,6 +8,11 @@ let package = Package(
         .executableTarget(
             name: "SpyProtect",
             path: "Sources/SpyProtect"
+        ),
+        .testTarget(
+            name: "SpyProtectTests",
+            dependencies: ["SpyProtect"],
+            path: "Tests/SpyProtectTests"
         )
     ]
 )

@@ -43,10 +43,22 @@ final class Monitor {
             self, selector: #selector(appLaunched(_:)),
             name: NSWorkspace.didLaunchApplicationNotification, object: nil)
 
-        usbWatcher = USBWatcher { [weak self] deviceName, inserted in
-            let label = inserted ? "USB device connected: \(deviceName)" : "USB device disconnected: \(deviceName)"
-            self?.record(kind: inserted ? .usbInserted : .usbRemoved, detail: label)
-        }
+        usbWatcher = USBWatcher(
+            onEvent: { [weak self] deviceName, inserted in
+                let label = inserted ? "USB device connected: \(deviceName)" : "USB device disconnected: \(deviceName)"
+                self?.record(kind: inserted ? .usbInserted : .usbRemoved, detail: label)
+            },
+            onHIDDetected: { [weak self] deviceName in
+                // Same treatment as a failed unlock attempt - this is the class code
+                // keystroke-injection USB attacks impersonate, so it's worth a snapshot
+                // too. Note it also fires for legitimate keyboards/mice/dongles.
+                CameraCapture.shared.capture { imagePath in
+                    self?.record(kind: .usbHIDConnected,
+                                 detail: "Keyboard/HID-class device connected: \(deviceName)",
+                                 imagePath: imagePath)
+                }
+            }
+        )
         usbWatcher?.start()
 
         authLogWatcher = AuthLogWatcher { [weak self] detail in

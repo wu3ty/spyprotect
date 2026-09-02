@@ -8,6 +8,8 @@
     <string>dev.stefanguericke.SpyProtect</string>
     <key>CFBundleName</key>
     <string>SpyProtect</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleDisplayName</key>
     <string>SpyProtect</string>
     <key>CFBundlePackageType</key>

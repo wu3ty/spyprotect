@@ -4,6 +4,7 @@ struct AwayEvent: Codable, Identifiable {
     enum Kind: String, Codable {
         case authFailure
         case usbInserted
+        case usbHIDConnected
         case usbRemoved
         case appLaunched
     }
@@ -34,11 +35,17 @@ final class EventStore {
 
     private let fileURL: URL
 
-    private init() {
+    private convenience init() {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("SpyProtect", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        fileURL = dir.appendingPathComponent("sessions.jsonl")
+        self.init(directory: dir)
+    }
+
+    /// Exposed (not just `private`) so tests can point at an isolated temp directory
+    /// instead of the real Application Support path.
+    init(directory: URL) {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        fileURL = directory.appendingPathComponent("sessions.jsonl")
     }
 
     func append(_ session: AwaySession) {

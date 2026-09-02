@@ -18,6 +18,16 @@ final class CameraCapture: NSObject {
         super.init()
     }
 
+    /// Deletes every captured snapshot. Called alongside EventStore.clearAll() so
+    /// "Clear All Logs" doesn't leave orphaned photos on disk with nothing left
+    /// referencing them.
+    func clearAllPhotos() {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: photosDir, includingPropertiesForKeys: nil) else { return }
+        for file in files {
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+
     /// Completion runs on the main queue with an absolute file path, or nil if no camera
     /// is available, access was denied, or capture otherwise failed.
     func capture(completion: @escaping (String?) -> Void) {

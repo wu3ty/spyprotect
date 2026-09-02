@@ -24,9 +24,14 @@ final class SessionListModel: ObservableObject {
     private static let lastSeenKey = "SpyProtect.lastSeenAt"
     private static let badgeClearedKey = "SpyProtect.badgeClearedAt"
 
-    init() {
-        lastSeenAt = UserDefaults.standard.object(forKey: Self.lastSeenKey) as? Date ?? .distantPast
-        badgeClearedAt = UserDefaults.standard.object(forKey: Self.badgeClearedKey) as? Date ?? .distantPast
+    /// Injectable so tests can use an isolated suite instead of polluting/reading the
+    /// real app's persisted defaults.
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        lastSeenAt = defaults.object(forKey: Self.lastSeenKey) as? Date ?? .distantPast
+        badgeClearedAt = defaults.object(forKey: Self.badgeClearedKey) as? Date ?? .distantPast
     }
 
     var hasUnseen: Bool {
@@ -61,7 +66,7 @@ final class SessionListModel: ObservableObject {
     func clearBadge() {
         guard hasUnseen else { return }
         badgeClearedAt = Date()
-        UserDefaults.standard.set(badgeClearedAt, forKey: Self.badgeClearedKey)
+        defaults.set(badgeClearedAt, forKey: Self.badgeClearedKey)
         onUnseenChanged?(false)
     }
 
@@ -69,7 +74,7 @@ final class SessionListModel: ObservableObject {
     /// around is tagged "old" starting next time - not the moment you opened it.
     func markSeenForCategorization() {
         lastSeenAt = Date()
-        UserDefaults.standard.set(lastSeenAt, forKey: Self.lastSeenKey)
+        defaults.set(lastSeenAt, forKey: Self.lastSeenKey)
     }
 }
 
@@ -209,6 +214,7 @@ struct SessionRow: View {
         switch kind {
         case .authFailure: return "exclamationmark.lock"
         case .usbInserted: return "externaldrive.badge.plus"
+        case .usbHIDConnected: return "keyboard.badge.exclamationmark"
         case .usbRemoved: return "externaldrive.badge.minus"
         case .appLaunched: return "app.badge"
         }
@@ -216,7 +222,7 @@ struct SessionRow: View {
 
     private func color(for kind: AwayEvent.Kind) -> Color {
         switch kind {
-        case .authFailure: return .red
+        case .authFailure, .usbHIDConnected: return .red
         case .usbInserted, .usbRemoved: return .orange
         case .appLaunched: return .blue
         }

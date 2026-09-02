@@ -16,13 +16,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var model = SessionListModel()
+    private var securityCheckWindow: NSWindow?
+    private var aboutWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model.reload()
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
-            button.image = NSImage(systemSymbolName: "eye.trianglebadge.exclamationmark", accessibilityDescription: "SpyProtect")
+            button.image = Self.menuIcon
             button.action = #selector(handleClick(_:))
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -51,10 +53,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func updateIcon(hasUnseen: Bool) {
         guard let button = statusItem?.button else { return }
-        let symbol = hasUnseen ? "eye.trianglebadge.exclamationmark.fill" : "eye"
-        let description = hasUnseen ? "New activity" : "SpyProtect"
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)
+        button.image = hasUnseen ? Self.menuIconAlert : Self.menuIcon
+        button.image?.accessibilityDescription = hasUnseen ? "New activity" : "SpyProtect"
     }
+
+    /// The plain eye glyph, marked as a template image so AppKit auto-tints it for
+    /// light/dark menu bars and the highlighted/selected state - same as an SF Symbol.
+    private static let menuIcon: NSImage? = {
+        let image = Bundle.main.image(forResource: "MenuIcon")
+        image?.isTemplate = true
+        return image
+    }()
+
+    /// The alert variant has a fixed-color red dot baked in, so it's deliberately NOT a
+    /// template image - the red needs to stay red regardless of menu bar appearance,
+    /// at the cost of the eye shape itself not auto-inverting for dark menu bars.
+    private static let menuIconAlert: NSImage? = Bundle.main.image(forResource: "MenuIconAlert")
 
     @objc private func handleClick(_ sender: AnyObject) {
         guard let button = statusItem?.button else { return }
@@ -84,7 +98,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             menu.addItem(.separator())
         }
 
+        menu.addItem(NSMenuItem(title: "Run Security Check…", action: #selector(openSecurityCheck), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Clear All Logs", action: #selector(clearAllLogs), keyEquivalent: ""))
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "About SpyProtect", action: #selector(openAbout), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit SpyProtect", action: #selector(quit), keyEquivalent: "q"))
         for item in menu.items { item.target = self }
@@ -114,8 +131,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func clearAllLogs() {
         EventStore.shared.clearAll()
+        CameraCapture.shared.clearAllPhotos()
         model.reload()
         updateIcon(hasUnseen: model.hasUnseen)
+    }
+
+    @objc private func openSecurityCheck() {
+        if let window = securityCheckWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+        let checkModel = SecurityCheckModel()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 560),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered, defer: false)
+        window.title = "SpyProtect Security Check"
+        window.contentView = NSHostingView(rootView: SecurityCheckView(model: checkModel))
+        window.center()
+        window.isReleasedWhenClosed = false
+        securityCheckWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func openAbout() {
+        if let window = aboutWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 420),
+            styleMask: [.titled, .closable],
+            backing: .buffered, defer: false)
+        window.title = "About SpyProtect"
+        window.contentView = NSHostingView(rootView: AboutView())
+        window.center()
+        window.isReleasedWhenClosed = false
+        aboutWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
     }
 
     @objc private func quit() {
