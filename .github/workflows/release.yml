@@ -5,6 +5,11 @@ on:
     tags:
       - "v*"
 
+# The default GITHUB_TOKEN is read-only unless a workflow explicitly asks for more -
+# creating a release needs write access to repo contents.
+permissions:
+  contents: write
+
 jobs:
   build-and-release:
     runs-on: macos-14
