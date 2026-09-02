@@ -35,9 +35,18 @@ struct AboutView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: 360)
 
-            Text("For personal use. Built with Swift and AppKit/SwiftUI.")
+            Text("Built with Swift and AppKit/SwiftUI.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
+
+            Button {
+                NSWorkspace.shared.open(URL(string: "https://github.com/wu3ty/spyprotect/blob/main/LICENSE")!)
+            } label: {
+                Text("Licensed under the MIT License")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.blue)
         }
         .padding(32)
         .frame(width: 420, height: 420)

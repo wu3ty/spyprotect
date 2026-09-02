@@ -23,7 +23,7 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>Personal use</string>
+    <string>© 2026 Stefan Guericke. MIT License.</string>
     <key>NSCameraUsageDescription</key>
     <string>SpyProtect takes a snapshot when a failed unlock attempt is detected, so you can see who tried.</string>
 </dict>

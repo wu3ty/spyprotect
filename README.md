@@ -1,4 +1,14 @@
-# SpyProtect
+<p align="center">
+  <img src="Resources/docs/logo.png" width="128" height="128" alt="SpyProtect logo">
+</p>
+
+<h1 align="center">SpyProtect</h1>
+
+<p align="center">
+  <a href="../../actions/workflows/lint.yml"><img src="../../actions/workflows/lint.yml/badge.svg" alt="Lint"></a>
+  <a href="../../actions/workflows/ci.yml"><img src="../../actions/workflows/ci.yml/badge.svg" alt="Tests"></a>
+  <a href="../../actions/workflows/release.yml"><img src="../../actions/workflows/release.yml/badge.svg" alt="Release"></a>
+</p>
 
 A macOS menu bar app that watches for activity while your screen is locked, so you know
 if anyone tried to get in while you were away.

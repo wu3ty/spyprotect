@@ -1,4 +1,4 @@
-name: Tests
+name: Lint
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  lint:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -15,11 +15,5 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
-      - name: Build
-        run: swift build
-
-      - name: Run tests
-        run: swift test
-
-      - name: Build app bundle (debug, sanity check)
-        run: ./build_app.sh debug
+      - name: swift-format lint
+        run: swift format lint --recursive Sources Tests Package.swift
