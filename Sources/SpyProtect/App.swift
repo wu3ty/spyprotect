@@ -49,6 +49,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NotificationManager.shared.notifyStartupCheck()
         Monitor.shared.start()
         updateIcon(hasUnseen: model.hasUnseen)
+
+        promptForLoginItemIfNeeded()
+    }
+
+    private static let hasPromptedLoginItemKey = "SpyProtect.hasPromptedLoginItem"
+
+    /// Asks once, the very first time the app runs, whether it should launch
+    /// automatically at login/reboot - since a security-monitoring tool that has to be
+    /// remembered and started by hand isn't actually watching anything most of the time.
+    private func promptForLoginItemIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: Self.hasPromptedLoginItemKey) else { return }
+        UserDefaults.standard.set(true, forKey: Self.hasPromptedLoginItemKey)
+
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Start SpyProtect automatically?"
+        alert.informativeText = "SpyProtect can launch every time you log in or restart, so it's always watching without you having to remember to start it yourself. You can change this later from the menu."
+        alert.addButton(withTitle: "Enable")
+        alert.addButton(withTitle: "Not Now")
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            LoginItemManager.setEnabled(true)
+        }
     }
 
     private func updateIcon(hasUnseen: Bool) {
@@ -101,6 +124,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(NSMenuItem(title: "Run Security Check…", action: #selector(openSecurityCheck), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Clear All Logs", action: #selector(clearAllLogs), keyEquivalent: ""))
         menu.addItem(.separator())
+
+        let loginItem = NSMenuItem(title: "Start at Login", action: #selector(toggleLoginItem), keyEquivalent: "")
+        loginItem.state = LoginItemManager.isEnabled ? .on : .off
+        menu.addItem(loginItem)
+        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "About SpyProtect", action: #selector(openAbout), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit SpyProtect", action: #selector(quit), keyEquivalent: "q"))
@@ -127,6 +155,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         model.showOld = false
         model.markSeenForCategorization()
+    }
+
+    @objc private func toggleLoginItem() {
+        LoginItemManager.setEnabled(!LoginItemManager.isEnabled)
     }
 
     @objc private func clearAllLogs() {
