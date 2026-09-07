@@ -230,13 +230,15 @@ struct SessionRow: View {
         case .usbHIDConnected: return "keyboard.badge.exclamationmark"
         case .usbRemoved: return "externaldrive.badge.minus"
         case .appLaunched: return "app.badge"
+        case .lidOpened: return "laptopcomputer"
+        case .lidClosed: return "laptopcomputer.slash"
         }
     }
 
     private func color(for kind: AwayEvent.Kind) -> Color {
         switch kind {
         case .authFailure, .usbHIDConnected: return .red
-        case .usbInserted, .usbRemoved: return .orange
+        case .usbInserted, .usbRemoved, .lidOpened, .lidClosed: return .orange
         case .appLaunched: return .blue
         }
     }

@@ -294,10 +294,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         case .success(let update) where update.isUpdateAvailable:
             alert.messageText = "Update Available"
             alert.informativeText = "Version \(update.latestVersion) is available (you have \(update.currentVersion))."
-            alert.addButton(withTitle: "View Release")
-            alert.addButton(withTitle: "Later")
-            if alert.runModal() == .alertFirstButtonReturn, let url = update.releaseURL {
-                NSWorkspace.shared.open(url)
+            if let assetURL = update.assetURL {
+                alert.addButton(withTitle: "Update Now")
+                alert.addButton(withTitle: "View Release")
+                alert.addButton(withTitle: "Later")
+                switch alert.runModal() {
+                case .alertFirstButtonReturn:
+                    performUpdate(assetURL: assetURL, version: update.latestVersion)
+                case .alertSecondButtonReturn:
+                    if let url = update.releaseURL { NSWorkspace.shared.open(url) }
+                default:
+                    break
+                }
+            } else {
+                alert.addButton(withTitle: "View Release")
+                alert.addButton(withTitle: "Later")
+                if alert.runModal() == .alertFirstButtonReturn, let url = update.releaseURL {
+                    NSWorkspace.shared.open(url)
+                }
             }
         case .success(let update):
             alert.messageText = "You're Up to Date"
@@ -307,6 +321,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         case .failure(let error):
             alert.alertStyle = .warning
             alert.messageText = "Couldn't Check for Updates"
+            alert.informativeText = error.localizedDescription
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
+    }
+
+    /// Downloads and installs in the background - no progress UI, since success means
+    /// the app quits and relaunches within a couple seconds anyway, which is itself the
+    /// visible feedback. Only a failure needs to interrupt with an alert.
+    private func performUpdate(assetURL: URL, version: String) {
+        AppUpdater.downloadAndInstall(assetURL: assetURL) { result in
+            guard case .failure(let error) = result else { return }
+            NSApp.activate(ignoringOtherApps: true)
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Update Failed"
             alert.informativeText = error.localizedDescription
             alert.addButton(withTitle: "OK")
             alert.runModal()

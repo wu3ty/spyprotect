@@ -83,7 +83,7 @@ final class NotificationManager {
 
     private static func isSecurityRelevant(_ kind: AwayEvent.Kind) -> Bool {
         switch kind {
-        case .authFailure, .usbInserted, .usbHIDConnected, .usbRemoved: return true
+        case .authFailure, .usbInserted, .usbHIDConnected, .usbRemoved, .lidOpened, .lidClosed: return true
         case .appLaunched: return false
         }
     }
@@ -95,6 +95,8 @@ final class NotificationManager {
         case .usbHIDConnected: return "Keyboard/HID device connected"
         case .usbRemoved: return "USB device disconnected"
         case .appLaunched: return "App launched"
+        case .lidOpened: return "Lid opened"
+        case .lidClosed: return "Lid closed"
         }
     }
 }

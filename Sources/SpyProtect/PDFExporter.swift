@@ -87,6 +87,8 @@ enum PDFExporter {
         case .usbHIDConnected: return "HID DEVICE"
         case .usbRemoved: return "USB DISCONNECTED"
         case .appLaunched: return "APP LAUNCHED"
+        case .lidOpened: return "LID OPENED"
+        case .lidClosed: return "LID CLOSED"
         }
     }
 

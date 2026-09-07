@@ -36,6 +36,7 @@ final class Monitor {
 
     private var usbWatcher: USBWatcher?
     private var authLogWatcher: AuthLogWatcher?
+    private var clamshellWatcher: ClamshellWatcher?
     private var retentionTimer: Timer?
 
     private let cameraCapture: (@escaping (String?) -> Void) -> Void
@@ -44,6 +45,8 @@ final class Monitor {
     private let appendSession: (AwaySession) -> Void
     private let isHIDDeviceTrusted: (_ vendorID: Int, _ productID: Int) -> Bool
     private let trustHIDDevice: (_ vendorID: Int, _ productID: Int, _ name: String) -> Void
+    private let isUSBDeviceTrusted: (_ vendorID: Int, _ productID: Int) -> Bool
+    private let trustUSBDevice: (_ vendorID: Int, _ productID: Int, _ name: String) -> Void
 
     /// Sessions and their snapshot photos older than this are auto-deleted (documented
     /// in README under Privacy notes).
@@ -59,6 +62,12 @@ final class Monitor {
         },
         trustHIDDevice: @escaping (_ vendorID: Int, _ productID: Int, _ name: String) -> Void = {
             TrustedHIDDeviceStore.shared.trust(vendorID: $0, productID: $1, name: $2)
+        },
+        isUSBDeviceTrusted: @escaping (_ vendorID: Int, _ productID: Int) -> Bool = {
+            TrustedUSBDeviceStore.shared.isTrusted(vendorID: $0, productID: $1)
+        },
+        trustUSBDevice: @escaping (_ vendorID: Int, _ productID: Int, _ name: String) -> Void = {
+            TrustedUSBDeviceStore.shared.trust(vendorID: $0, productID: $1, name: $2)
         }
     ) {
         self.cameraCapture = cameraCapture
@@ -67,6 +76,8 @@ final class Monitor {
         self.appendSession = appendSession
         self.isHIDDeviceTrusted = isHIDDeviceTrusted
         self.trustHIDDevice = trustHIDDevice
+        self.isUSBDeviceTrusted = isUSBDeviceTrusted
+        self.trustUSBDevice = trustUSBDevice
     }
 
     func start() {
@@ -82,19 +93,32 @@ final class Monitor {
             name: NSWorkspace.didLaunchApplicationNotification, object: nil)
 
         usbWatcher = USBWatcher(
-            onEvent: { [weak self] deviceName, inserted in
-                self?.handleUSBEvent(deviceName: deviceName, inserted: inserted)
+            onEvent: { [weak self] deviceName, inserted, vendorID, productID in
+                self?.handleUSBEvent(deviceName: deviceName, inserted: inserted, vendorID: vendorID, productID: productID)
             },
             onHIDDetected: { [weak self] deviceName, vendorID, productID in
                 self?.handleHIDDetected(deviceName: deviceName, vendorID: vendorID, productID: productID)
             }
         )
         usbWatcher?.start()
+        // Anything already plugged in before this launch (docks, hubs, a trackpad, ...)
+        // never fires a fresh "first match" through the notification stream above, so it
+        // would otherwise sit permanently un-whitelisted. Trust the whole snapshot now -
+        // we have no way to know when any of it was actually connected anyway.
+        for device in USBWatcher.scanCurrentlyConnectedUSBDevices() {
+            guard let vendorID = device.vendorID, let productID = device.productID else { continue }
+            trustUSBDevice(vendorID, productID, device.name)
+        }
 
         authLogWatcher = AuthLogWatcher { [weak self] detail in
             self?.handleAuthFailure(detail: detail)
         }
         authLogWatcher?.start()
+
+        clamshellWatcher = ClamshellWatcher { [weak self] closed in
+            self?.handleLidStateChange(closed: closed)
+        }
+        clamshellWatcher?.start()
 
         // If we're (re)launching while the screen is already locked - e.g. after a
         // crash, a relaunch during development, or a login-item start that races the
@@ -122,8 +146,21 @@ final class Monitor {
     // (not private) so tests can call them directly with fake camera/notify/append
     // closures, verifying the actual gating behavior rather than just reading the code.
 
-    func handleUSBEvent(deviceName: String, inserted: Bool) {
-        guard isCurrentlyLocked else { return }
+    func handleUSBEvent(deviceName: String, inserted: Bool, vendorID: Int? = nil, productID: Int? = nil) {
+        // Sleep/wake and lock/unlock typically power-cycle an entire USB hub tree at once -
+        // a dock, its built-in hub, and everything plugged into it all disconnect and
+        // reconnect together - so without trusting devices seen while unlocked, every lock
+        // event would re-log and re-notify for the same handful of permanently-attached
+        // peripherals (hubs, docks, a trackpad, ...).
+        guard isCurrentlyLocked else {
+            if inserted, let vendorID, let productID {
+                trustUSBDevice(vendorID, productID, deviceName)
+            }
+            return
+        }
+        if let vendorID, let productID, isUSBDeviceTrusted(vendorID, productID) {
+            return
+        }
         let label = inserted ? "USB device connected: \(deviceName)" : "USB device disconnected: \(deviceName)"
         record(kind: inserted ? .usbInserted : .usbRemoved, detail: label)
     }
@@ -171,6 +208,12 @@ final class Monitor {
         cameraCapture { [weak self] imagePath in
             self?.record(kind: .authFailure, detail: detail, imagePath: imagePath)
         }
+    }
+
+    func handleLidStateChange(closed: Bool) {
+        guard isCurrentlyLocked else { return }
+        let label = closed ? "Laptop lid closed" : "Laptop lid opened"
+        record(kind: closed ? .lidClosed : .lidOpened, detail: label)
     }
 
     func handleAppLaunched(name: String) {

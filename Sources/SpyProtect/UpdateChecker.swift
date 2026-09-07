@@ -5,6 +5,10 @@ struct UpdateCheckResult {
     let latestVersion: String
     let currentVersion: String
     let releaseURL: URL?
+    /// Direct download link for the release's `SpyProtect.zip` asset, if the release has
+    /// one - nil for a release with no assets attached, in which case only "View Release"
+    /// (opening `releaseURL` in a browser) is possible, not an in-app update.
+    let assetURL: URL?
 }
 
 /// Checks GitHub's "latest release" API for a newer version than what's currently
@@ -45,11 +49,17 @@ enum UpdateChecker {
 
             let latestVersion = tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName
             let htmlURL = (json["html_url"] as? String).flatMap(URL.init(string:))
+            let assets = json["assets"] as? [[String: Any]] ?? []
+            let assetURL = assets
+                .first { ($0["name"] as? String) == "SpyProtect.zip" }
+                .flatMap { $0["browser_download_url"] as? String }
+                .flatMap(URL.init(string:))
             let result = UpdateCheckResult(
                 isUpdateAvailable: isVersion(latestVersion, newerThan: currentVersion),
                 latestVersion: latestVersion,
                 currentVersion: currentVersion,
-                releaseURL: htmlURL
+                releaseURL: htmlURL,
+                assetURL: assetURL
             )
             DispatchQueue.main.async { completion(.success(result)) }
         }.resume()

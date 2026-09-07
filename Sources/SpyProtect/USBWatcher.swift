@@ -10,7 +10,7 @@ import IOKit.usb
 /// (or a wireless receiver dongle) - it's a "worth a closer look" signal, not proof of an
 /// attack.
 final class USBWatcher {
-    private let onEvent: (_ detail: String, _ inserted: Bool) -> Void
+    private let onEvent: (_ detail: String, _ inserted: Bool, _ vendorID: Int?, _ productID: Int?) -> Void
     /// vendorID/productID are nil only if the parent device's IORegistry entry couldn't
     /// be read - callers that key trust decisions off these should treat a nil pair as
     /// "unidentifiable", not "untrusted".
@@ -23,7 +23,7 @@ final class USBWatcher {
 
     private static let hidInterfaceClass: UInt8 = 3
 
-    init(onEvent: @escaping (_ detail: String, _ inserted: Bool) -> Void,
+    init(onEvent: @escaping (_ detail: String, _ inserted: Bool, _ vendorID: Int?, _ productID: Int?) -> Void,
          onHIDDetected: @escaping (_ detail: String, _ vendorID: Int?, _ productID: Int?) -> Void) {
         self.onEvent = onEvent
         self.onHIDDetected = onHIDDetected
@@ -95,6 +95,32 @@ final class USBWatcher {
         return results
     }
 
+    /// One-shot, synchronous snapshot of every currently-connected top-level USB device,
+    /// independent of the ongoing notification stream above. `start()` only reports a
+    /// device via `onEvent` the moment it (re-)enumerates - a device already connected
+    /// before the watcher started (built-in hardware, or anything plugged in before this
+    /// app launch) never gets a fresh "first match" and so is otherwise never trusted,
+    /// leaving it permanently un-whitelisted until it happens to be unplugged and
+    /// replugged while unlocked. Callers use this to seed the trust store on launch.
+    static func scanCurrentlyConnectedUSBDevices() -> [(name: String, vendorID: Int?, productID: Int?)] {
+        guard let matching = IOServiceMatching("IOUSBHostDevice") else { return [] }
+        var iterator: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS else { return [] }
+        defer { IOObjectRelease(iterator) }
+
+        var results: [(name: String, vendorID: Int?, productID: Int?)] = []
+        var device = IOIteratorNext(iterator)
+        while device != 0 {
+            let name = describe(device)
+            let vendorID = intProperty(device, "idVendor")
+            let productID = intProperty(device, "idProduct")
+            results.append((name: name, vendorID: vendorID, productID: productID))
+            IOObjectRelease(device)
+            device = IOIteratorNext(iterator)
+        }
+        return results
+    }
+
     private static func drainSilently(_ iterator: io_iterator_t) {
         var entry = IOIteratorNext(iterator)
         while entry != 0 {
@@ -109,7 +135,9 @@ final class USBWatcher {
         var device = IOIteratorNext(iterator)
         while device != 0 {
             let name = describe(device)
-            watcher.onEvent(name, inserted)
+            let vendorID = intProperty(device, "idVendor")
+            let productID = intProperty(device, "idProduct")
+            watcher.onEvent(name, inserted, vendorID, productID)
             IOObjectRelease(device)
             device = IOIteratorNext(iterator)
         }

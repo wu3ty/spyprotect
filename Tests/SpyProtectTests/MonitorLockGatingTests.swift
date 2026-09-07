@@ -42,6 +42,7 @@ final class MonitorLockGatingTests: XCTestCase {
         monitor.handleHIDDetected(deviceName: "Test Keyboard")
         monitor.handleUSBEvent(deviceName: "Test Drive", inserted: true)
         monitor.handleAppLaunched(name: "Safari")
+        monitor.handleLidStateChange(closed: false)
         monitor.waitForQueueForTesting()
 
         XCTAssertEqual(cameraCallCount, 0, "camera must never be touched while unlocked")
@@ -70,14 +71,15 @@ final class MonitorLockGatingTests: XCTestCase {
         monitor.handleAuthFailure(detail: "Failed unlock attempt")
         monitor.handleHIDDetected(deviceName: "Test Keyboard")
         monitor.handleUSBEvent(deviceName: "Test Drive", inserted: true)
+        monitor.handleLidStateChange(closed: false)
         monitor.waitForQueueForTesting()
 
         monitor.screenUnlocked()
         wait(for: [sessionExpectation], timeout: 1.0)
 
         XCTAssertEqual(cameraCallCount, 2, "authFailure and HID detection should each capture a photo")
-        XCTAssertEqual(notifyCallCount, 3, "all three detections should have notified")
-        XCTAssertEqual(appendedSession?.events.count, 3)
+        XCTAssertEqual(notifyCallCount, 4, "all four detections should have notified")
+        XCTAssertEqual(appendedSession?.events.count, 4)
         XCTAssertEqual(appendedSession?.events.compactMap(\.imagePath).count, 2, "only the two camera-backed events should carry a snapshot path")
     }
 

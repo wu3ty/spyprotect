@@ -7,6 +7,8 @@ struct AwayEvent: Codable, Identifiable {
         case usbHIDConnected
         case usbRemoved
         case appLaunched
+        case lidOpened
+        case lidClosed
     }
 
     var id = UUID()
