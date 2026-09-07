@@ -41,22 +41,15 @@ worth checking manually since they can't be read reliably from the command line.
 ## Installing a release build
 
 1. Download `SpyProtect.zip` from the [Releases](../../releases) page and unzip it.
-2. **This build is not notarized or signed with an Apple Developer ID**, so Gatekeeper
-   will block it. On recent macOS, a plain right-click → Open often doesn't even offer
-   an override - you may just see:
+2. Releases from v1.2.0 onward are **signed with a Developer ID Application certificate
+   and notarized by Apple** - just open it normally, no Gatekeeper warning.
 
-   > "Apple could not verify 'SpyProtect.app' is free of malware..."
-
-   Two ways past it (only needed once):
-
-   - **Terminal** (fastest): remove the quarantine flag the download attached -
-     ```bash
-     xattr -cr ~/Downloads/SpyProtect.app
-     ```
-     (adjust the path if you unzipped it somewhere else), then open it normally.
-   - **System Settings**: after the block, open System Settings → Privacy & Security →
-     scroll down to *"SpyProtect.app" was blocked to protect your Mac* → **Open Anyway**,
-     then confirm once more when it launches.
+   Releases before v1.2.0 were ad-hoc signed only and needed a workaround to open. If
+   you're on one of those older builds and see *"Apple could not verify 'SpyProtect.app'
+   is free of malware..."*, either remove the quarantine flag in Terminal
+   (`xattr -cr ~/Downloads/SpyProtect.app`, adjusting the path as needed) or go to System
+   Settings → Privacy & Security → **Open Anyway** after the first blocked attempt -
+   grab the latest release instead, though, and you won't need either.
 3. On first launch, macOS will ask for **Notification** and **Camera** permission -
    both are needed for the core features (alerts, and the failed-unlock snapshot). It
    will also ask once whether to start automatically at login - you can change that
@@ -117,8 +110,8 @@ the other badges) it only renders once this repository is public.
 
 ## TODO
 
-- [ ] Sign and notarize the app with an Apple Developer ID, so downloaded builds open
-      without a Gatekeeper warning (currently ad-hoc signed only)
+- [x] Sign and notarize the app with an Apple Developer ID, so downloaded builds open
+      without a Gatekeeper warning (as of v1.2.0)
 
 ## Privacy notes
 
