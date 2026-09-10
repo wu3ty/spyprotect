@@ -196,18 +196,19 @@ final class Monitor {
             }
             return
         }
-        // A composite device (a trackpad, a keyboard with a built-in hub, ...) enumerates
-        // several separate HID-class interfaces at once, each of which reaches this
-        // method independently - without this, one physical reconnect would log/notify
-        // (and for an untrusted device, snapshot) once per interface instead of once per
-        // device. Scoped to the current lock session so a genuine later reconnect - a
-        // fresh lock/unlock cycle - still gets reported.
-        guard markHIDDeviceReportedIfNeeded(vendorID: vendorID, productID: productID, name: deviceName) else { return }
-
+        // A known/trusted device reconnecting while locked - the same hub power-cycle
+        // that makes a plain trusted USB device silent (see handleUSBEvent above) also
+        // applies here: it's expected, not worth a log entry.
         if let vendorID, let productID, isHIDDeviceTrusted(vendorID, productID) {
-            record(kind: .usbHIDConnected, detail: "Known keyboard/HID-class device reconnected: \(deviceName)")
             return
         }
+        // A composite device (a trackpad, a keyboard with a built-in hub, ...) enumerates
+        // several separate HID-class interfaces at once, each of which reaches this
+        // method independently - without this, one physical reconnect would log/notify/
+        // snapshot once per interface instead of once per device. Scoped to the current
+        // lock session so a genuine later reconnect - a fresh lock/unlock cycle - still
+        // gets reported.
+        guard markHIDDeviceReportedIfNeeded(vendorID: vendorID, productID: productID, name: deviceName) else { return }
         // Same treatment as a failed unlock attempt - this is the class code
         // keystroke-injection USB attacks impersonate, so it's worth a snapshot too.
         // Note it also fires for legitimate keyboards/mice/dongles never seen while

@@ -2,9 +2,9 @@ import XCTest
 @testable import SpyProtect
 
 /// Covers the trusted-HID-device allowlist: a device seen while unlocked should be
-/// remembered, and a later reconnect of that same device while locked should be logged
-/// without a snapshot/alert, while an unrecognized device while locked still gets the
-/// full camera-capture treatment.
+/// remembered, and a later reconnect of that same device while locked should be
+/// completely silent (same as a plain trusted USB device), while an unrecognized device
+/// while locked still gets the full camera-capture treatment.
 final class MonitorHIDTrustTests: XCTestCase {
     private func makeMonitor(
         cameraCapture: @escaping (@escaping (String?) -> Void) -> Void = { $0(nil) },
@@ -49,7 +49,7 @@ final class MonitorHIDTrustTests: XCTestCase {
         XCTAssertEqual(trustCallCount, 0, "a device we can't identify by vendor/product ID can't be trusted")
     }
 
-    func testTrustedDeviceReconnectingWhileLockedSkipsCameraAndStillLogs() {
+    func testTrustedDeviceReconnectingWhileLockedIsSilent() {
         var cameraCallCount = 0
         var notifyCallCount = 0
         let monitor = makeMonitor(
@@ -68,7 +68,7 @@ final class MonitorHIDTrustTests: XCTestCase {
         monitor.waitForQueueForTesting()
 
         XCTAssertEqual(cameraCallCount, 0, "a known device reconnecting shouldn't trigger a snapshot")
-        XCTAssertEqual(notifyCallCount, 1, "it should still be logged/notified, just without a photo")
+        XCTAssertEqual(notifyCallCount, 0, "a known device reconnecting is expected, not worth logging or notifying")
     }
 
     func testUnknownDeviceWhileLockedStillFiresCamera() {
