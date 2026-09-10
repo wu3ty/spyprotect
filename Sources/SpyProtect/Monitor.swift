@@ -31,6 +31,9 @@ final class Monitor {
     private let queue = DispatchQueue(label: "spyprotect.monitor")
     private var buffer: [AwayEvent] = []
     private var lockedAt: Date?
+    /// Devices already reported this lock session, keyed by vendor/product ID (or name
+    /// when IDs aren't available) - see markHIDDeviceReportedIfNeeded(vendorID:productID:name:).
+    private var reportedHIDDevicesThisLockSession: Set<String> = []
 
     var onNewSession: ((AwaySession) -> Void)?
 
@@ -47,10 +50,20 @@ final class Monitor {
     private let trustHIDDevice: (_ vendorID: Int, _ productID: Int, _ name: String) -> Void
     private let isUSBDeviceTrusted: (_ vendorID: Int, _ productID: Int) -> Bool
     private let trustUSBDevice: (_ vendorID: Int, _ productID: Int, _ name: String) -> Void
+    private let scheduleAuthFailureRecheck: (@escaping () -> Void) -> Void
 
     /// Sessions and their snapshot photos older than this are auto-deleted (documented
     /// in README under Privacy notes).
     static let retentionDays = 30
+
+    /// opendirectoryd logs "Authentication failed: ODErrorCredentialsInvalid" as routine
+    /// internal noise on essentially every unlock attempt - including ones with the
+    /// correct credential - confirmed by cross-referencing real captured logs against
+    /// this app's own session history: every quick, correct-credential unlock also
+    /// produced one, typically 80ms-2.4s before the actual unlock. A genuine failed
+    /// attempt leaves the screen locked; the noise accompanying a successful attempt does
+    /// not, so waiting this long and rechecking lock state separates the two.
+    static let authFailureGracePeriod: TimeInterval = 3.0
 
     init(
         cameraCapture: @escaping (@escaping (String?) -> Void) -> Void = { CameraCapture.shared.capture(completion: $0) },
@@ -68,6 +81,9 @@ final class Monitor {
         },
         trustUSBDevice: @escaping (_ vendorID: Int, _ productID: Int, _ name: String) -> Void = {
             TrustedUSBDeviceStore.shared.trust(vendorID: $0, productID: $1, name: $2)
+        },
+        scheduleAuthFailureRecheck: @escaping (@escaping () -> Void) -> Void = { block in
+            DispatchQueue.global().asyncAfter(deadline: .now() + Monitor.authFailureGracePeriod, execute: block)
         }
     ) {
         self.cameraCapture = cameraCapture
@@ -78,6 +94,7 @@ final class Monitor {
         self.trustHIDDevice = trustHIDDevice
         self.isUSBDeviceTrusted = isUSBDeviceTrusted
         self.trustUSBDevice = trustUSBDevice
+        self.scheduleAuthFailureRecheck = scheduleAuthFailureRecheck
     }
 
     func start() {
@@ -179,6 +196,14 @@ final class Monitor {
             }
             return
         }
+        // A composite device (a trackpad, a keyboard with a built-in hub, ...) enumerates
+        // several separate HID-class interfaces at once, each of which reaches this
+        // method independently - without this, one physical reconnect would log/notify
+        // (and for an untrusted device, snapshot) once per interface instead of once per
+        // device. Scoped to the current lock session so a genuine later reconnect - a
+        // fresh lock/unlock cycle - still gets reported.
+        guard markHIDDeviceReportedIfNeeded(vendorID: vendorID, productID: productID, name: deviceName) else { return }
+
         if let vendorID, let productID, isHIDDeviceTrusted(vendorID, productID) {
             record(kind: .usbHIDConnected, detail: "Known keyboard/HID-class device reconnected: \(deviceName)")
             return
@@ -194,6 +219,18 @@ final class Monitor {
         }
     }
 
+    /// Returns true the first time a given device is seen in the current lock session,
+    /// false for any repeat (e.g. its other HID interfaces enumerating right alongside).
+    private func markHIDDeviceReportedIfNeeded(vendorID: Int?, productID: Int?, name: String) -> Bool {
+        let key: String
+        if let vendorID, let productID {
+            key = "\(vendorID):\(productID)"
+        } else {
+            key = name
+        }
+        return queue.sync { reportedHIDDevicesThisLockSession.insert(key).inserted }
+    }
+
     func handleAuthFailure(detail: String) {
         // The log predicate is a heuristic on system log phrasing - it can also match a
         // local authentication prompt (Touch ID, a password manager, signing into a
@@ -201,12 +238,22 @@ final class Monitor {
         // normal use. Never take a photo or notify unless we're actually in a confirmed
         // locked/away window.
         guard isCurrentlyLocked else { return }
-        // Snapshot whoever's at the keyboard right when a failed attempt is detected.
-        // Capture runs async (camera warm-up + exposure settle), so the event is
-        // recorded once the photo is ready (or immediately with no photo if capture
-        // fails/is denied) rather than blocking detection on it.
-        cameraCapture { [weak self] imagePath in
-            self?.record(kind: .authFailure, detail: detail, imagePath: imagePath)
+        // Wait out authFailureGracePeriod and only proceed if the screen is *still*
+        // locked - see its doc comment for why (opendirectoryd's failure line is not a
+        // reliable signal of a genuinely wrong credential on its own). This also closes
+        // a race with the recheck below: without it, a slow camera capture could finish
+        // after the real unlock already happened, notifying for an event that then has
+        // nowhere valid to be persisted.
+        scheduleAuthFailureRecheck { [weak self] in
+            guard let self, self.isCurrentlyLocked else { return }
+            // Snapshot whoever's at the keyboard right when a failed attempt is detected.
+            // Capture runs async (camera warm-up + exposure settle), so the event is
+            // recorded once the photo is ready (or immediately with no photo if capture
+            // fails/is denied) rather than blocking detection on it.
+            self.cameraCapture { [weak self] imagePath in
+                guard let self, self.isCurrentlyLocked else { return }
+                self.record(kind: .authFailure, detail: detail, imagePath: imagePath)
+            }
         }
     }
 
@@ -253,7 +300,10 @@ final class Monitor {
     }
 
     @objc func screenLocked() {
-        queue.async { self.lockedAt = Date() }
+        queue.async {
+            self.lockedAt = Date()
+            self.reportedHIDDevicesThisLockSession.removeAll()
+        }
     }
 
     @objc func screenUnlocked() {
