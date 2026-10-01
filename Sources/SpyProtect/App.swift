@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var trustedDevicesWindow: NSWindow?
     private var trustedDevicesModel: TrustedDevicesModel?
     private var updateCheckTimer: Timer?
+    private var trustedPlaceTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard Self.isOnlyInstance() else {
@@ -64,8 +65,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NotificationManager.shared.requestAuthorization()
         NotificationManager.shared.notifyStartupCheck()
         CameraCapture.shared.requestAccessIfNeeded()
+        if !TrustedPlaceStore.shared.all().isEmpty {
+            TrustedPlaceService.shared.requestLocationAccessIfNeeded()
+        }
         Monitor.shared.start()
         updateIcon(hasUnseen: model.hasUnseen)
+        // Wi-Fi can change at any time (and so can trust, via the menu), so poll cheaply
+        // rather than wiring up CoreWLAN event delegates.
+        trustedPlaceTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.updateIcon(hasUnseen: self.model.hasUnseen)
+        }
 
         promptForLoginItemIfNeeded()
         scheduleAutoUpdateCheckIfNeeded()
@@ -132,8 +142,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func updateIcon(hasUnseen: Bool) {
         guard let button = statusItem?.button else { return }
-        button.image = hasUnseen ? Self.menuIconAlert : Self.menuIcon
-        button.image?.accessibilityDescription = hasUnseen ? "New activity" : "SpyProtect"
+        // New activity wins over the trusted-place tint - an unreviewed alert must stay red.
+        let inTrustedPlace = TrustedPlaceService.shared.isInTrustedPlace
+        if hasUnseen {
+            button.image = Self.menuIconAlert
+        } else if inTrustedPlace, let green = Self.menuIconTrusted {
+            button.image = green
+        } else {
+            button.image = Self.menuIcon
+        }
+        button.image?.accessibilityDescription = hasUnseen ? "New activity" : (inTrustedPlace ? "SpyProtect - trusted place" : "SpyProtect")
     }
 
     /// The plain eye glyph, marked as a template image so AppKit auto-tints it for
@@ -141,6 +159,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private static let menuIcon: NSImage? = {
         let image = Bundle.main.image(forResource: "MenuIcon")
         image?.isTemplate = true
+        return image
+    }()
+
+    /// The eye filled with a green gradient, shown while on a trusted network. Built by using
+    /// the glyph's alpha as a mask, so it stays in sync with the real icon artwork. Not a
+    /// template image, since it needs to stay green in both light and dark menu bars.
+    private static let menuIconTrusted: NSImage? = {
+        guard let base = Bundle.main.image(forResource: "MenuIcon") else { return nil }
+        let size = base.size
+        let image = NSImage(size: size, flipped: false) { rect in
+            guard let ctx = NSGraphicsContext.current?.cgContext,
+                  let cg = base.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return false }
+            ctx.clip(to: rect, mask: cg)
+            let gradient = NSGradient(starting: NSColor(calibratedRed: 0.55, green: 0.90, blue: 0.40, alpha: 1),
+                                      ending: NSColor(calibratedRed: 0.05, green: 0.60, blue: 0.30, alpha: 1))
+            gradient?.draw(in: rect, angle: -90)
+            return true
+        }
+        image.isTemplate = false
         return image
     }()
 
@@ -192,6 +229,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             menu.addItem(.separator())
         }
 
+        addTrustedPlaceItems(to: menu)
+        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Run Security Check…", action: #selector(openSecurityCheck), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Export Log as PDF…", action: #selector(exportLogAsPDF), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Clear All Logs", action: #selector(clearAllLogs), keyEquivalent: ""))
@@ -213,6 +252,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(NSMenuItem(title: "Quit SpyProtect", action: #selector(quit), keyEquivalent: "q"))
         for item in menu.items { item.target = self }
         return menu
+    }
+
+    /// Trusted places: while on one of these Wi-Fi networks, nothing is monitored or logged.
+    private func addTrustedPlaceItems(to menu: NSMenu) {
+        let service = TrustedPlaceService.shared
+        let store = TrustedPlaceStore.shared
+        if let ssid = service.currentSSID {
+            if store.isTrusted(ssid: ssid) {
+                let item = NSMenuItem(title: "✓ Trusted Place: \(ssid) - Stop Trusting", action: #selector(toggleTrustCurrentPlace), keyEquivalent: "")
+                item.representedObject = ssid
+                menu.addItem(item)
+            } else {
+                let item = NSMenuItem(title: "Trust This Place (\(ssid))", action: #selector(toggleTrustCurrentPlace), keyEquivalent: "")
+                item.representedObject = ssid
+                menu.addItem(item)
+            }
+        } else {
+            menu.addItem(NSMenuItem(title: "Trust This Place…", action: #selector(explainNoNetwork), keyEquivalent: ""))
+        }
+
+        let places = store.all()
+        if !places.isEmpty {
+            let submenu = NSMenu()
+            for place in places {
+                let item = NSMenuItem(title: "Remove \(place.ssid)", action: #selector(removeTrustedPlace(_:)), keyEquivalent: "")
+                item.representedObject = place.ssid
+                item.target = self
+                submenu.addItem(item)
+            }
+            let parent = NSMenuItem(title: "Trusted Places", action: nil, keyEquivalent: "")
+            parent.submenu = submenu
+            menu.addItem(parent)
+        }
+    }
+
+    @objc private func toggleTrustCurrentPlace(_ sender: NSMenuItem) {
+        guard let ssid = sender.representedObject as? String else { return }
+        if TrustedPlaceStore.shared.isTrusted(ssid: ssid) {
+            TrustedPlaceStore.shared.untrust(ssid: ssid)
+        } else {
+            TrustedPlaceStore.shared.trust(ssid: ssid)
+        }
+        updateIcon(hasUnseen: model.hasUnseen)
+    }
+
+    @objc private func removeTrustedPlace(_ sender: NSMenuItem) {
+        guard let ssid = sender.representedObject as? String else { return }
+        TrustedPlaceStore.shared.untrust(ssid: ssid)
+        updateIcon(hasUnseen: model.hasUnseen)
+    }
+
+    /// No SSID readable: either Location permission is missing (macOS requires it to read
+    /// Wi-Fi names) or the Mac isn't on Wi-Fi.
+    @objc private func explainNoNetwork() {
+        let service = TrustedPlaceService.shared
+        service.requestLocationAccessIfNeeded()
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Can't Read the Wi-Fi Network"
+        if service.locationDenied {
+            alert.informativeText = "macOS only lets apps read the Wi-Fi network name with Location permission. Enable SpyProtect in System Settings > Privacy & Security > Location Services, then try again."
+        } else {
+            alert.informativeText = "Connect to Wi-Fi (and allow Location access if macOS asks - it's required to read the network name), then try again."
+        }
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     private func togglePopover(_ button: NSStatusBarButton) {

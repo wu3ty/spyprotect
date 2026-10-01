@@ -51,6 +51,7 @@ final class Monitor {
     private let isUSBDeviceTrusted: (_ vendorID: Int, _ productID: Int) -> Bool
     private let trustUSBDevice: (_ vendorID: Int, _ productID: Int, _ name: String) -> Void
     private let scheduleAuthFailureRecheck: (@escaping () -> Void) -> Void
+    private let isInTrustedPlace: () -> Bool
 
     /// Sessions and their snapshot photos older than this are auto-deleted (documented
     /// in README under Privacy notes).
@@ -84,7 +85,8 @@ final class Monitor {
         },
         scheduleAuthFailureRecheck: @escaping (@escaping () -> Void) -> Void = { block in
             DispatchQueue.global().asyncAfter(deadline: .now() + Monitor.authFailureGracePeriod, execute: block)
-        }
+        },
+        isInTrustedPlace: @escaping () -> Bool = { TrustedPlaceService.shared.isInTrustedPlace }
     ) {
         self.cameraCapture = cameraCapture
         self.notify = notify
@@ -95,6 +97,7 @@ final class Monitor {
         self.isUSBDeviceTrusted = isUSBDeviceTrusted
         self.trustUSBDevice = trustUSBDevice
         self.scheduleAuthFailureRecheck = scheduleAuthFailureRecheck
+        self.isInTrustedPlace = isInTrustedPlace
     }
 
     func start() {
@@ -175,6 +178,7 @@ final class Monitor {
             }
             return
         }
+        guard !isInTrustedPlace() else { return }
         if let vendorID, let productID, isUSBDeviceTrusted(vendorID, productID) {
             return
         }
@@ -196,6 +200,7 @@ final class Monitor {
             }
             return
         }
+        guard !isInTrustedPlace() else { return }
         // A known/trusted device reconnecting while locked - the same hub power-cycle
         // that makes a plain trusted USB device silent (see handleUSBEvent above) also
         // applies here: it's expected, not worth a log entry.
@@ -238,7 +243,7 @@ final class Monitor {
         // website with a passkey) that happens while the Mac is unlocked and in active,
         // normal use. Never take a photo or notify unless we're actually in a confirmed
         // locked/away window.
-        guard isCurrentlyLocked else { return }
+        guard isMonitoringActive else { return }
         // Wait out authFailureGracePeriod and only proceed if the screen is *still*
         // locked - see its doc comment for why (opendirectoryd's failure line is not a
         // reliable signal of a genuinely wrong credential on its own). This also closes
@@ -246,26 +251,26 @@ final class Monitor {
         // after the real unlock already happened, notifying for an event that then has
         // nowhere valid to be persisted.
         scheduleAuthFailureRecheck { [weak self] in
-            guard let self, self.isCurrentlyLocked else { return }
+            guard let self, self.isMonitoringActive else { return }
             // Snapshot whoever's at the keyboard right when a failed attempt is detected.
             // Capture runs async (camera warm-up + exposure settle), so the event is
             // recorded once the photo is ready (or immediately with no photo if capture
             // fails/is denied) rather than blocking detection on it.
             self.cameraCapture { [weak self] imagePath in
-                guard let self, self.isCurrentlyLocked else { return }
+                guard let self, self.isMonitoringActive else { return }
                 self.record(kind: .authFailure, detail: detail, imagePath: imagePath)
             }
         }
     }
 
     func handleLidStateChange(closed: Bool) {
-        guard isCurrentlyLocked else { return }
+        guard isMonitoringActive else { return }
         let label = closed ? "Laptop lid closed" : "Laptop lid opened"
         record(kind: closed ? .lidClosed : .lidOpened, detail: label)
     }
 
     func handleAppLaunched(name: String) {
-        guard isCurrentlyLocked else { return }
+        guard isMonitoringActive else { return }
         record(kind: .appLaunched, detail: name)
     }
 
@@ -275,6 +280,13 @@ final class Monitor {
     /// being locked; only the latter should ever have a visible side effect.
     private var isCurrentlyLocked: Bool {
         queue.sync { lockedAt != nil }
+    }
+
+    /// Locked AND not in a trusted place (e.g. home Wi-Fi) - the gate for every detector
+    /// that has a side effect. Re-evaluated on each event so moving networks mid-lock takes
+    /// effect immediately.
+    private var isMonitoringActive: Bool {
+        isCurrentlyLocked && !isInTrustedPlace()
     }
 
     private func pruneOldData() {

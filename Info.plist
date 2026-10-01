@@ -26,5 +26,9 @@
     <string>© 2026 Stefan Guericke. MIT License.</string>
     <key>NSCameraUsageDescription</key>
     <string>SpyProtect takes a snapshot when a failed unlock attempt is detected, so you can see who tried.</string>
+    <key>NSLocationUsageDescription</key>
+    <string>SpyProtect reads the name of the Wi-Fi network you're connected to so it can recognize trusted places, like home.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>SpyProtect reads the name of the Wi-Fi network you're connected to so it can recognize trusted places, like home.</string>
 </dict>
 </plist>
