@@ -8,7 +8,14 @@ BUNDLE_ID := dev.wu3ty.SpyProtect
 # Looked up dynamically from whatever keychain is active (rather than hardcoded), so this
 # works whether the Developer ID Application certificate lives in a normal login Keychain
 # (local use) or a throwaway keychain created just for a CI run (see release.yml).
-SIGNING_IDENTITY := $(shell security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')
+# Prefers a certificate issued by the Developer ID G2 CA (the original Sub-CA expires 2027-02-01);
+# identities are selected by SHA-1 so a not-yet-expired duplicate of the old cert isn't ambiguous.
+SIGNING_IDENTITY := $(shell \
+	for h in $$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | awk '{print $$2}'); do \
+		if security find-certificate -a -c "Developer ID Application" -Z -p 2>/dev/null | awk -v H=$$h 'toupper($$0) ~ "SHA-1 HASH: " H {f=1;next} f&&/BEGIN/{p=1} p{print} f&&/END/{exit}' | openssl x509 -noout -issuer 2>/dev/null | grep -q "OU=G2"; then echo $$h; break; fi; done)
+ifeq ($(SIGNING_IDENTITY),)
+SIGNING_IDENTITY := $(shell security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | awk '{print $$2}')
+endif
 
 help:
 	@echo "make build          - swift build (CONFIG=debug|release, default debug)"
