@@ -134,11 +134,6 @@ are allowed to fire, security checks, and update checking - are the ones actuall
 by `Tests/SpyProtectTests`. CI regenerates this badge on every push to `main`, and (like
 the other badges) it only renders once this repository is public.
 
-## TODO
-
-- [x] Sign and notarize the app with an Apple Developer ID, so downloaded builds open
-      without a Gatekeeper warning (as of v1.2.0)
-
 ## Privacy notes
 
 - Snapshots and event history are stored locally only, under
