@@ -93,6 +93,32 @@ make install   - build a release SpyProtect.app and copy it to /Applications
 macOS treats it as a real app (own entry in Notification settings, stable TCC identity
 across relaunches, etc.).
 
+## Releasing
+
+1. Bump `CFBundleShortVersionString` and `CFBundleVersion` in `Info.plist`, commit, push.
+2. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`. The `Release` workflow runs the
+   tests, signs with the Developer ID certificate, notarizes, and publishes `SpyProtect.zip`.
+
+### Renewing the Developer ID certificate (yearly)
+
+Developer ID certificates issued from the G2 CA expire after one year (the original Sub-CA
+ones expire 2027-02-01). Mac apps already signed and notarized keep working; only new
+releases need a valid certificate. To renew:
+
+1. Create a CSR with a fresh key (kept out of git, `.signing/` is ignored):
+   `mkdir -p .signing && openssl req -new -newkey rsa:2048 -nodes -keyout .signing/devid.key -out .signing/devid.csr -subj "/emailAddress=<apple id>/CN=<your name>/C=DE"`
+2. developer.apple.com/account -> Certificates, Identifiers & Profiles -> Certificates -> **+**
+   -> *Developer ID Application*, intermediary **G2 Sub-CA**, upload the CSR, download the `.cer`.
+3. Build and import a `.p12` (the `.cer` is DER):
+   `openssl x509 -inform der -in developerID_application.cer -out .signing/devid.pem`
+   `openssl pkcs12 -export -inkey .signing/devid.key -in .signing/devid.pem -out .signing/devid.p12 -passout pass:<password>`
+   `security import .signing/devid.p12 -k ~/Library/Keychains/login.keychain-db -P <password> -T /usr/bin/codesign`
+4. Update the GitHub secrets `APPLE_CERT_P12_BASE64` (`base64 -i .signing/devid.p12 | tr -d '\n'`)
+   and `APPLE_CERT_PASSWORD` (exact password, no trailing newline - a mismatch fails the
+   workflow with "MAC verification failed ... wrong password?").
+5. Delete `.signing/`, the `.cer`, and the old certificate from Keychain Access. The Makefile
+   prefers a G2-issued identity, so an old duplicate is harmless until then.
+
 ## Running tests
 
 ```bash
